@@ -1,0 +1,46 @@
+import pandas as pd
+import os
+from constant import DATA_PATH, IS_DOCKER
+import timescaledb_model as tsdb
+from models import FileInfo
+from typing import Optional
+
+db = (
+    tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp")
+    if IS_DOCKER
+    else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
+)
+
+
+def get_files_infos_df(backup_path:Optional[str]=None) -> pd.DataFrame:
+    if backup_path:
+        return pd.read_pickle(backup_path)
+    files_infos: list[FileInfo] = []
+
+    for root, dirs, files in os.walk(DATA_PATH):
+        if len(dirs) > 0:
+            continue
+        year = int(root.split("/")[-1])
+        for file in files:
+            if file[0] == ".":
+                continue
+            prefix = file.split(" ")[0]
+            timestamp = " ".join(file.split(" ")[1:]).split(".")[0]
+            files_infos.append(
+                FileInfo(prefix=prefix, path=os.path.join(root, file), year=year, timestamp=timestamp)
+            )
+    files_infos_df = pd.DataFrame(files_infos)
+    files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
+    files_infos_df.set_index("timestamp", inplace=True)
+    files_infos_df.sort_index(inplace=True)
+    return files_infos_df
+
+
+
+#TODO
+def store_file(path: str) -> pd.DataFrame:
+    df = pd.read_pickle(path) 
+    return df
+
+if __name__ == "__main__":
+    print("Done")
