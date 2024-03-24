@@ -3,5 +3,5 @@ from typing import TypedDict
 class FileInfo(TypedDict):
     year: int
     timestamp: str
-    prefix: str
+    market: str
     path: str

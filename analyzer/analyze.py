@@ -24,10 +24,10 @@ def get_files_infos_df(backup_path:Optional[str]=None) -> pd.DataFrame:
         for file in files:
             if file[0] == ".":
                 continue
-            prefix = file.split(" ")[0]
+            market = file.split(" ")[0]
             timestamp = " ".join(file.split(" ")[1:]).split(".")[0]
             files_infos.append(
-                FileInfo(prefix=prefix, path=os.path.join(root, file), year=year, timestamp=timestamp)
+                FileInfo(market=market, path=os.path.join(root, file), year=year, timestamp=timestamp)
             )
     files_infos_df = pd.DataFrame(files_infos)
     files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
@@ -42,6 +42,8 @@ def get_files_infos_df(backup_path:Optional[str]=None) -> pd.DataFrame:
 #TODO
 def store_file(path: str) -> pd.DataFrame:
     df = pd.read_pickle(path) 
+    # convert last to int
+    # keep the c presence in a column (true/false)
     return df
 
 if __name__ == "__main__":
