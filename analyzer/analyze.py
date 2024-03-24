@@ -42,8 +42,8 @@ def get_files_infos_df(backup_path:Optional[str]=None) -> pd.DataFrame:
 #TODO
 def store_file(path: str) -> pd.DataFrame:
     df = pd.read_pickle(path) 
-    # convert last to int
-    # keep the c presence in a column (true/false)
+    df['last_suffix'] = df['last'].str.extract(r'\((.*?)\)', expand=False)
+    df['last'] = df['last'].str.replace(r'\((.*?)\)', '', regex=True).str.replace(' ', '').astype(float)
     return df
 
 if __name__ == "__main__":
