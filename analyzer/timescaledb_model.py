@@ -7,6 +7,8 @@ import datetime
 import psycopg2
 import pandas as pd
 import sqlalchemy
+from constant import DATA_PATH, IS_DOCKER
+import os
 
 import mylogging
 
@@ -22,7 +24,7 @@ class TimescaleStockMarketModel:
 
         """
 
-        self.logger = mylogging.getLogger(__name__, filename="bourse.log")  #/tmp/bourse.log
+        self.logger = mylogging.getLogger(__name__, filename= os.path.join(DATA_PATH, "bourse.log") if not IS_DOCKER else "/tmp/bourse.log") 
 
         self.__database = database
         self.__user = user or database

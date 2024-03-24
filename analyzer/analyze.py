@@ -37,8 +37,8 @@ def get_files_infos_windows_df(backup_path: Optional[str] = None) -> pd.DataFram
     files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
     files_infos_df.set_index("timestamp", inplace=True)
     files_infos_df.sort_index(inplace=True)
-    files_infos_df["year_month"] = files_infos_df.index.to_period("M")
-    files_infos_df["date"] = files_infos_df.index.date
+    files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
+    files_infos_df["date"] = files_infos_df.index.date  # type: ignore
     return files_infos_df
 
 def get_files_infos_df(backup_path:Optional[str]=None) -> pd.DataFrame:
