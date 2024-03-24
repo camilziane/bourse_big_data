@@ -3,3 +3,6 @@ timescaledb
 __pycache__
 .DS_Store
 *.pkl
+docker/analyzer/Makefile
+docker/dashboard/Makefile
+*.tgz
