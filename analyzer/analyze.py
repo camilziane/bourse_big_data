@@ -69,10 +69,11 @@ def get_files_infos_df(backup_path:Optional[str]=None) -> pd.DataFrame:
 
 
 #TODO
-def store_file(path: str) -> pd.DataFrame:
-    df = pd.read_pickle(path) 
+def read_file(path: str) -> pd.DataFrame:
+    df: pd.DataFrame = pd.read_pickle(path) 
     df['last_suffix'] = df['last'].str.extract(r'\((.*?)\)', expand=False)
     df['last'] = df['last'].str.replace(r'\((.*?)\)', '', regex=True).str.replace(' ', '').astype(float)
+    df.attrs =  {'timestamp': " ".join(path.split(" ")[1:]).split(".")[0]}
     return df
 
 if __name__ == "__main__":
