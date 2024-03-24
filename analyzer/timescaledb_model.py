@@ -22,7 +22,7 @@ class TimescaleStockMarketModel:
 
         """
 
-        self.logger = mylogging.getLogger(__name__, filename="/tmp/bourse.log")
+        self.logger = mylogging.getLogger(__name__, filename="bourse.log")  #/tmp/bourse.log
 
         self.__database = database
         self.__user = user or database
