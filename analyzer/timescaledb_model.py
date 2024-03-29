@@ -59,6 +59,25 @@ class TimescaleStockMarketModel:
                 retry -= 1
         raise Exception("Failed to connect to database after multiple attempts")
 
+
+    def clean_database(self):
+        cursor = self.__connection.cursor()
+
+        # Fetch all table names from the public schema
+        cursor.execute("""
+            SELECT tablename 
+            FROM pg_tables 
+            WHERE schemaname = 'public'
+        """)
+        tables = cursor.fetchall()
+
+        # Drop each table
+        for table in tables:
+            table_name = table[0]
+            cursor.execute(f'DROP TABLE IF EXISTS public.{table_name};')
+
+        self.__connection.commit()
+
     def _setup_database(self):
         try:
             # Create the tables if they do not exist.
@@ -69,7 +88,8 @@ class TimescaleStockMarketModel:
             #
             cursor = self.__connection.cursor()
             # markets (see end for list of makets)
-            cursor.execute('''CREATE SEQUENCE market_id_seq START 1;''')
+            
+            cursor.execute('''CREATE SEQUENCE IF NOT EXISTS market_id_seq START 1;''')
             cursor.execute(
                 '''CREATE TABLE markets (
                   id SMALLINT PRIMARY KEY DEFAULT nextval('market_id_seq'),
@@ -79,7 +99,7 @@ class TimescaleStockMarketModel:
             # company:
             #   - mid : market id
             #
-            cursor.execute('''CREATE SEQUENCE company_id_seq START 1;''')
+            cursor.execute('''CREATE SEQUENCE IF NOT EXISTS company_id_seq START 1;''')
             cursor.execute(
                 '''CREATE TABLE companies (
                   id SMALLINT PRIMARY KEY DEFAULT nextval('company_id_seq'),
@@ -87,6 +107,7 @@ class TimescaleStockMarketModel:
                   mid SMALLINT,
                   symbol VARCHAR,
                   symbol_nf VARCHAR,
+                  ticker VARCHAR,
                   isin CHAR(12),
                   reuters VARCHAR,
                   boursorama VARCHAR,
