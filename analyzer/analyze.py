@@ -86,7 +86,11 @@ def read_file(path: str) -> pd.DataFrame:
         .str.replace(" ", "")
         .astype(float)
     )
-    df.attrs = {"timestamp": " ".join(path.split(" ")[1:]).split(".")[0]}
+    timestamp = " ".join(path.split(" ")[1:]).split(".")[0]
+    df["timestamp"] = pd.to_datetime(timestamp)
+    df["symbol"] = df["symbol"].astype(str)
+    df["name"] = df["name"].astype(str)
+    df.attrs = {"timestamp": timestamp}
     return df
 
 

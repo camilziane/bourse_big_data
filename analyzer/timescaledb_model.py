@@ -43,6 +43,7 @@ class TimescaleStockMarketModel:
         self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
         self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
         self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
+        self.nasdaq_market_id = self.get_market_id_from_alias("nasdaq")
 
     def connect_to_database(self, retry_limit=5, retry_delay=1):
         retry = retry_limit
@@ -75,6 +76,10 @@ class TimescaleStockMarketModel:
         for table in tables:
             table_name = table[0]
             cursor.execute(f'DROP TABLE IF EXISTS public.{table_name};')
+        
+        sequences_to_drop = ["market_id_seq", "company_id_seq"]  # replace with your sequence names
+        for sequence in sequences_to_drop:
+            cursor.execute(f'DROP SEQUENCE IF EXISTS {sequence};')
 
         self.__connection.commit()
 
