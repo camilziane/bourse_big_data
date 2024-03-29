@@ -38,12 +38,11 @@ class TimescaleStockMarketModel:
         self.__engine = sqlalchemy.create_engine(f'timescaledb://{self.__user}:{self.__password}@{self.__host}:{self.__port}/{self.__database}')
         self.__nf_cid = {}  # cid from netfonds symbol
         self.__boursorama_cid = {}  # cid from netfonds symbol
+        self.logger.info("Setup database generates an error if it exists already, it's ok")
+        self._setup_database()
         self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
         self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
         self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
-
-        self.logger.info("Setup database generates an error if it exists already, it's ok")
-        self._setup_database()
 
     def connect_to_database(self, retry_limit=5, retry_delay=1):
         retry = retry_limit
