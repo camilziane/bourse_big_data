@@ -9,6 +9,7 @@ import pandas as pd
 import sqlalchemy
 from constant import DATA_PATH, IS_DOCKER
 import os
+import time
 
 import mylogging
 
@@ -32,18 +33,32 @@ class TimescaleStockMarketModel:
         self.__port = port or 5432
         self.__password = password or ''
         self.__squash = False
-        self.__connection = psycopg2.connect(database=self.__database,
-                                             user=self.__user,
-                                             host=self.__host,
-                                             password=self.__password)
+        
+        self.__connection = self.connect_to_database() 
         self.__engine = sqlalchemy.create_engine(f'timescaledb://{self.__user}:{self.__password}@{self.__host}:{self.__port}/{self.__database}')
         self.__nf_cid = {}  # cid from netfonds symbol
         self.__boursorama_cid = {}  # cid from netfonds symbol
-        self.__market_id = {}  # id of markets from aliases
+        self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
+        self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
+        self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
 
         self.logger.info("Setup database generates an error if it exists already, it's ok")
         self._setup_database()
 
+    def connect_to_database(self, retry_limit=5, retry_delay=1):
+        retry = retry_limit
+        while retry > 0:
+            try:
+                connection = psycopg2.connect(database=self.__database,
+                                                    user=self.__user,
+                                                    host=self.__host,
+                                                    password=self.__password)
+                return connection
+            except Exception as e:
+                print(f"Connection attempt failed: {e}")
+                time.sleep(retry_delay)
+                retry -= 1
+        raise Exception("Failed to connect to database after multiple attempts")
 
     def _setup_database(self):
         try:
@@ -120,6 +135,15 @@ class TimescaleStockMarketModel:
             cursor.execute("INSERT INTO markets (id, name, alias) VALUES (8,'Paris compartiment B','compB');")
             cursor.execute("INSERT INTO markets (id, name, alias) VALUES (9,'Bourse Allemande','xetra');")
             cursor.execute("INSERT INTO markets (id, name, alias) VALUES (10,'Bruxelle','bruxelle');")
+            
+            # markets
+            cursor.execute("INSERT INTO markets (id, name, alias) VALUES (11,'Euronext Amsterdam','e_amsterdam');")
+            cursor.execute("INSERT INTO markets (id, name, alias) VALUES (12,'Euronext Paris','e_paris');")
+            cursor.execute("INSERT INTO markets (id, name, alias) VALUES (13,'Euronext Bruxelle','e_bruxelle');")
+            cursor.execute("INSERT INTO markets (id, name, alias) VALUES (14,'NASDAQ','nasdaq');")
+
+
+            
         except Exception as e:
             self.logger.exception('SQL error: %s' % e)
         self.__connection.commit()
@@ -241,6 +265,9 @@ class TimescaleStockMarketModel:
         Check if a file has already been included in the DB
         '''
         return  self.raw_query("SELECT EXISTS ( SELECT 1 FROM file_done WHERE name = '%s' );" % name)[0][0]
+    
+    def get_market_id_from_alias(self, alias: str):
+        return self.raw_query("SELECT id FROM markets WHERE alias = %s;", (alias,))[0][0]
 
 
 #

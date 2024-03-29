@@ -5,11 +5,6 @@ import timescaledb_model as tsdb
 from models import FileInfo
 from typing import Optional
 
-db = (
-    tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp")
-    if IS_DOCKER
-    else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
-)
 
 def get_files_infos_windows_df(backup_path: Optional[str] = None) -> pd.DataFrame:
     if backup_path:
@@ -77,4 +72,11 @@ def read_file(path: str) -> pd.DataFrame:
     return df
 
 if __name__ == "__main__":
+    print(IS_DOCKER)
+    db = (
+    tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp")
+    if IS_DOCKER
+    else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
+)
+    print(db.raw_query("SELECT * FROM markets;"))
     print("Done")
