@@ -34,16 +34,16 @@ class TimescaleStockMarketModel:
         self.__password = password or ''
         self.__squash = False
         
+        self.connection = self.connect_to_database()
         self.__connection = self.connect_to_database() 
         self.__engine = sqlalchemy.create_engine(f'timescaledb://{self.__user}:{self.__password}@{self.__host}:{self.__port}/{self.__database}')
         self.__nf_cid = {}  # cid from netfonds symbol
         self.__boursorama_cid = {}  # cid from netfonds symbol
         self.logger.info("Setup database generates an error if it exists already, it's ok")
         self._setup_database()
-        self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
-        self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
-        self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
-        self.nasdaq_market_id = self.get_market_id_from_alias("nasdaq")
+        # self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
+        # self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
+        # self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
 
     def connect_to_database(self, retry_limit=5, retry_delay=1):
         retry = retry_limit
@@ -59,31 +59,108 @@ class TimescaleStockMarketModel:
                 time.sleep(retry_delay)
                 retry -= 1
         raise Exception("Failed to connect to database after multiple attempts")
-
-
-    def clean_database(self):
+    
+    def _create_sequence(self, sequence_name, commit=False):
+        """Create a sequence in the database."""
         cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"CREATE SEQUENCE {sequence_name};")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error creating sequence: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
 
-        # Fetch all table names from the public schema
-        cursor.execute("""
-            SELECT tablename 
-            FROM pg_tables 
-            WHERE schemaname = 'public'
-        """)
-        tables = cursor.fetchall()
+    def _drop_sequence(self, sequence_name, commit=False):
+        """Drop a sequence from the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"DROP SEQUENCE IF EXISTS {sequence_name};")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error dropping sequence: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
 
-        # Drop each table
-        for table in tables:
-            table_name = table[0]
-            cursor.execute(f'DROP TABLE IF EXISTS public.{table_name};')
-        
-        sequences_to_drop = ["market_id_seq", "company_id_seq"]  # replace with your sequence names
-        for sequence in sequences_to_drop:
-            cursor.execute(f'DROP SEQUENCE IF EXISTS {sequence};')
+    def _create_table(self, table_name, columns_definition, commit=False):
+        """Create a table in the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"CREATE TABLE {table_name} ({columns_definition});")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error creating table: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
 
-        self.__connection.commit()
+    def _drop_table(self, table_name, commit=False):
+        """Drop a table from the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error dropping table: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
 
-    def _setup_database(self):
+    def _create_hypertable(self, table_name, time_column, commit=False):
+        """Create a hypertable in the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"SELECT create_hypertable('{table_name}', '{time_column}');")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error creating hypertable: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
+
+    def _drop_hypertable(self, table_name, commit=False):
+        """Drop a hypertable from the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"SELECT drop_hypertable('{table_name}');")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error dropping hypertable: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
+
+    def _create_index(self, table_name, index_name, columns, commit=False):
+        """Create an index in the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"CREATE INDEX {index_name} ON {table_name} ({columns});")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error creating index: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
+
+    def _drop_index(self, index_name, commit=False):
+        """Drop an index from the database."""
+        cursor = self.__connection.cursor()
+        try:
+            cursor.execute(f"DROP INDEX IF EXISTS {index_name};")
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error dropping index: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
+
+    def _insert_data(self, table_name, data, commit=False):
+        """Insert data into a table in the database."""
+        cursor = self.__connection.cursor()
+        try:
+            for row in data:
+                cursor.execute(f"INSERT INTO {table_name} VALUES %s;", (row,))
+            if commit:
+                self.__connection.commit()
+        except Exception as e:
+            print(f"Error inserting data: {e}")
+            self.__connection.rollback()  # Rollback the current transaction
+
+    def _setup_database2(self):
         try:
             # Create the tables if they do not exist.
             #
@@ -93,8 +170,7 @@ class TimescaleStockMarketModel:
             #
             cursor = self.__connection.cursor()
             # markets (see end for list of makets)
-            
-            cursor.execute('''CREATE SEQUENCE IF NOT EXISTS market_id_seq START 1;''')
+            cursor.execute('''CREATE SEQUENCE market_id_seq START 1;''')
             cursor.execute(
                 '''CREATE TABLE markets (
                   id SMALLINT PRIMARY KEY DEFAULT nextval('market_id_seq'),
@@ -104,7 +180,7 @@ class TimescaleStockMarketModel:
             # company:
             #   - mid : market id
             #
-            cursor.execute('''CREATE SEQUENCE IF NOT EXISTS company_id_seq START 1;''')
+            cursor.execute('''CREATE SEQUENCE company_id_seq START 1;''')
             cursor.execute(
                 '''CREATE TABLE companies (
                   id SMALLINT PRIMARY KEY DEFAULT nextval('company_id_seq'),
@@ -112,7 +188,6 @@ class TimescaleStockMarketModel:
                   mid SMALLINT,
                   symbol VARCHAR,
                   symbol_nf VARCHAR,
-                  ticker VARCHAR,
                   isin CHAR(12),
                   reuters VARCHAR,
                   boursorama VARCHAR,
@@ -172,6 +247,67 @@ class TimescaleStockMarketModel:
         except Exception as e:
             self.logger.exception('SQL error: %s' % e)
         self.__connection.commit()
+    
+    def _setup_database(self):
+        """Setup the database schema."""
+        try:
+            # Create sequences
+            self._create_sequence("market_id_seq")
+            self._create_sequence("company_id_seq")
+
+            # Create tables
+            self._create_table("markets", "id SMALLINT PRIMARY KEY DEFAULT nextval('market_id_seq'), name VARCHAR, alias VARCHAR")
+            self._create_table("companies", "id SMALLINT PRIMARY KEY DEFAULT nextval('company_id_seq'), name VARCHAR, mid SMALLINT, symbol VARCHAR, symbol_nf VARCHAR, isin CHAR(12), reuters VARCHAR, boursorama VARCHAR, pea BOOLEAN, sector INTEGER")
+            self._create_table("stocks", "date TIMESTAMPTZ, cid SMALLINT, value FLOAT4, volume INT")
+            self._create_table("daystocks", "date TIMESTAMPTZ, cid SMALLINT, open FLOAT4, close FLOAT4, high FLOAT4, low FLOAT4, volume INT")
+            self._create_table("file_done", "name VARCHAR PRIMARY KEY")
+            self._create_table("tags", "name VARCHAR PRIMARY KEY, value VARCHAR")
+
+            # Create hypertables
+            self._create_hypertable("stocks", "date")
+            self._create_hypertable("daystocks", "date")
+
+            # Create indexes
+            self._create_index("stocks", "idx_cid_stocks", "cid, date DESC")
+            self._create_index("daystocks", "idx_cid_daystocks", "cid, date DESC")
+
+            # Insert initial market data
+            initial_markets_data = [
+                (1, 'NYSE Euronext', 'euronx'),
+                (2, 'London Stock Exchange', 'lse'),
+                (3, 'Bourse Italienne', 'milano'),
+                (4, 'Bourse Allemande', 'dbx'),
+                (5, 'Bourse Espagnole', 'mercados'),
+                (6, 'Amsterdam', 'amsterdam'),
+                (7, 'Paris compartiment A', 'compA'),
+                (8, 'Paris compartiment B', 'compB'),
+                (9, 'Bourse Allemande', 'xetra'),
+                (10, 'Bruxelle', 'bruxelle'),
+                (11, 'Euronext Amsterdam', 'e_amsterdam'),
+                (12, 'Euronext Paris', 'e_paris'),
+                (13, 'Euronext Bruxelle', 'e_bruxelle'),
+                (14, 'NASDAQ', 'nasdaq')
+            ]
+            self._insert_data("markets", initial_markets_data)
+
+        except Exception as e:
+            self.logger.exception('SQL error: %s' % e)
+        self.__connection.commit()
+    
+    def clean_database(self):
+        self._drop_table("markets")
+        self._drop_table("companies") 
+        self._drop_table("stocks")
+        self._drop_table("daystocks")
+        self._drop_table("file_done")
+        self._drop_table("tags")
+
+        self._drop_sequence("market_id_seq")
+        self._drop_sequence("company_id_seq")
+
+        self._drop_index("stocks")
+        self._drop_index("daystocks")
+        self.commit()
 
     # ------------------------------ public methods --------------------------------
 
@@ -240,6 +376,8 @@ class TimescaleStockMarketModel:
                            chunksize=chunksize, dtype=dtype) # type: ignore
 
     # system methods
+
+
 
     def commit(self):
         if not self.__squash:
