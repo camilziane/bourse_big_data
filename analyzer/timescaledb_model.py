@@ -16,7 +16,7 @@ import mylogging
 class TimescaleStockMarketModel:
     """ Bourse model with TimeScaleDB persistence."""
 
-    def __init__(self, database, user=None, host=None, password=None, port=None):
+    def __init__(self, database, user=None, host=None, password=None, port=None,setup=False):
         """Create a TimescaleStockMarketModel
 
         database -- The name of the persistence database.
@@ -40,10 +40,13 @@ class TimescaleStockMarketModel:
         self.__nf_cid = {}  # cid from netfonds symbol
         self.__boursorama_cid = {}  # cid from netfonds symbol
         self.logger.info("Setup database generates an error if it exists already, it's ok")
-        self._setup_database()
-        # self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
-        # self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
-        # self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
+        if setup:
+            self.clean_database()
+            self._setup_database()
+        self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
+        self.__prefixes = ["1rP", "1rA", "1rE", "FF1"]
+        self.prefix_to_market_id = { prefix: self.get_market_id_from_alias(self.__prefix_to_alias[prefix]) for prefix in self.__prefixes}
+        self.nasdaq_market_id = self.get_market_id_from_alias("nasdaq")
 
     def connect_to_database(self, retry_limit=5, retry_delay=1):
         retry = retry_limit
@@ -257,7 +260,7 @@ class TimescaleStockMarketModel:
 
             # Create tables
             self._create_table("markets", "id SMALLINT PRIMARY KEY DEFAULT nextval('market_id_seq'), name VARCHAR, alias VARCHAR")
-            self._create_table("companies", "id SMALLINT PRIMARY KEY DEFAULT nextval('company_id_seq'), name VARCHAR, mid SMALLINT, symbol VARCHAR, symbol_nf VARCHAR, isin CHAR(12), reuters VARCHAR, boursorama VARCHAR, pea BOOLEAN, sector INTEGER")
+            self._create_table("companies", "id SMALLINT PRIMARY KEY DEFAULT nextval('company_id_seq'), name VARCHAR, ticker VARCHAR, mid SMALLINT, symbol VARCHAR, symbol_nf VARCHAR, isin CHAR(12), reuters VARCHAR, boursorama VARCHAR, pea BOOLEAN, sector INTEGER")
             self._create_table("stocks", "date TIMESTAMPTZ, cid SMALLINT, value FLOAT4, volume INT")
             self._create_table("daystocks", "date TIMESTAMPTZ, cid SMALLINT, open FLOAT4, close FLOAT4, high FLOAT4, low FLOAT4, volume INT")
             self._create_table("file_done", "name VARCHAR PRIMARY KEY")
