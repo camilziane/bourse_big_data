@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from constant import DATA_PATH, IS_DOCKER, DATA_PATH_SAMY
 import timescaledb_model as tsdb
+import numpy as np
 from models import FileInfo
 from typing import Optional
 
@@ -78,7 +79,6 @@ def get_files_infos_df(backup_path: Optional[str] = None) -> pd.DataFrame:
 # TODO
 def read_file(path: str) -> pd.DataFrame:
     df: pd.DataFrame = pd.read_pickle(path)
-    df["last_suffix"] = df["last"].str.extract(r"\((.*?)\)", expand=False)
     df["last"] = (
         df["last"]
         .astype(str)
@@ -86,10 +86,12 @@ def read_file(path: str) -> pd.DataFrame:
         .str.replace(" ", "")
         .astype(float)
     )
+    df["last_suffix"] = df["last"].str.extract(r"\((.*?)\)", expand=False)
     timestamp = " ".join(path.split(" ")[1:]).split(".")[0]
     df["timestamp"] = pd.to_datetime(timestamp)
     df["symbol"] = df["symbol"].astype(str)
     df["name"] = df["name"].astype(str)
+    # df["volume"] =  df["volume"].apply(lambda x: np.nan if x < 0 else x).ffill()
     df.attrs = {"timestamp": timestamp}
     return df
 
