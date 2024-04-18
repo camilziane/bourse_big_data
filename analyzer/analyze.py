@@ -1,99 +1,118 @@
 import pandas as pd
-import os
-from constant import DATA_PATH, IS_DOCKER, DATA_PATH_SAMY
+from constant import IS_DOCKER
 import timescaledb_model as tsdb
 import numpy as np
-from models import FileInfo
-from typing import Optional
+import concurrent.futures
+import os
+from utils import get_files_infos_df
+from companies import update_companies, multi_read_df_from_paths
+from tqdm import tqdm
 
 
-def get_files_infos_windows_df(backup_path: Optional[str] = None) -> pd.DataFrame:
-    if backup_path:
-        return pd.read_pickle(backup_path)
-    files_infos = []
+def dfs_to_stocks(dfs: list[pd.DataFrame]) -> pd.DataFrame:
+    df_stocks = pd.concat(dfs)
+    df_stocks = df_stocks.drop(columns=["symbol", "last_suffix", "name"])
+    df_stocks.reset_index(inplace=True)
+    df_stocks.set_index("timestamp", inplace=True)
+    start_day_index = df_stocks.between_time("09:00", "09:10").index
+    df_stocks.reset_index(inplace=True)
+    df_stocks.loc[~df_stocks["timestamp"].isin(start_day_index), "volume"] = (
+        df_stocks.loc[~df_stocks["timestamp"].isin(start_day_index), "volume"].apply(
+            lambda x: np.nan if x < 0 else x
+        )
+    )
+    df_stocks.reset_index(inplace=True)
+    df_stocks = (
+        df_stocks.groupby(["symbol", pd.Grouper(key="timestamp", freq="1T")])
+        .mean()
+        .reset_index()
+    )
+    df_stocks = (
+        df_stocks.groupby(["symbol", pd.Grouper(key="timestamp", freq="1T")])
+        .mean()
+        .reset_index()
+    )
+    df_stocks["volume"] = df_stocks["volume"].ffill()
+    df_stocks.reset_index(inplace=True)
+    print(len(df_stocks[df_stocks["volume"] < 0]))
+    return df_stocks
 
-    for root, dirs, files in os.walk(DATA_PATH_SAMY):
-        if len(dirs) > 0:
-            continue
-        year_str = os.path.basename(root)
+
+def update_stocks(
+    db: tsdb.TimescaleStockMarketModel,
+    dfs: list[pd.DataFrame],
+    symbol_to_companies: dict,
+):
+    df_stocks = dfs_to_stocks(dfs)
+    df_stocks["cid"] = df_stocks["symbol"].apply(
+        lambda x: symbol_to_companies.get(x, None)
+    )
+    df_stocks.rename(columns={"timestamp": "date", "last": "value"}, inplace=True)
+    df_stocks = df_stocks[["date", "cid", "value", "volume"]]
+    df_stocks.set_index("date", inplace=True)
+    db.df_write(df_stocks, "stocks", chunksize=10000)
+
+
+def get_file_not_dones_df(
+    db: tsdb.TimescaleStockMarketModel, files_infos_df: pd.DataFrame
+) -> pd.DataFrame:
+    files_names = [i[0] for i in db.raw_query("SELECT * FROM file_done")]
+    return files_infos_df[~files_infos_df["path"].isin(files_names)]
+
+
+def update_file_done(db: tsdb.TimescaleStockMarketModel, files_infos_df: pd.DataFrame):
+    files_dones = files_infos_df["path"]
+    files_dones.rename("name", inplace=True)
+    db.df_write(files_dones, "file_done", index=False)
+
+
+def update_timescale_db(db: tsdb.TimescaleStockMarketModel):
+    companies = db.raw_query("SELECT * FROM companies")
+    files_infos_df = get_files_infos_df()
+    
+    if len(companies) == 0:
+        companies_files = files_infos_df.groupby(["market", "date"]).first()
+        companies_files.reset_index(inplace=True)
+        dfs_amsterdam = multi_read_df_from_paths(
+            list(companies_files[companies_files["market"] == "amsterdam"]["path"])
+        )
+        dfs_compA = multi_read_df_from_paths(
+            list(companies_files[companies_files["market"] == "compA"]["path"])
+        )
+        dfs_compB = multi_read_df_from_paths(
+            list(companies_files[companies_files["market"] == "compB"]["path"])
+        )
+        dfs_peapme = multi_read_df_from_paths(
+            list(companies_files[companies_files["market"] == "peapme"]["path"])
+        )
+        update_companies(db, dfs_amsterdam, dfs_compA, dfs_compB, dfs_peapme)
+        symbol_to_companies = {
+            v: k
+            for k, v in dict(db.raw_query("SELECT id, symbol FROM companies")).items()
+        }
+    symbol_to_companies = {
+        v: k for k, v in dict(db.raw_query("SELECT id, symbol FROM companies")).items()
+    }
+    files_not_dones_df = get_file_not_dones_df(db, files_infos_df)
+    dates = files_not_dones_df["date"].unique()
+    dates = np.array_split(dates, len(dates) // 2)
+
+    def process_dates_group(dates_group):
+        print("Processing dates group: ", dates_group)
+        files_infos_df_group = files_infos_df[files_infos_df["date"].isin(dates_group)]
+        stock_files = files_infos_df_group["path"]
+        dfs = multi_read_df_from_paths(list(stock_files))
         try:
-            year = int(year_str)
-        except ValueError:
-            continue
-        for file in files:
-            if file[0] == ".":
-                continue
-            market = file.split(" ")[0]
-            timestamp = " ".join(file.split(" ")[1:]).split(".")[0]
-            files_infos.append(
-                {
-                    "market": market,
-                    "path": os.path.join(root, file),
-                    "year": year,
-                    "timestamp": timestamp,
-                }
-            )
-    files_infos_df = pd.DataFrame(files_infos)
-    files_infos_df["timestamp"] = pd.to_datetime(
-        files_infos_df["timestamp"], format="%Y-%m-%d %H_%M_%S"
-    )
-    files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
-    files_infos_df.set_index("timestamp", inplace=True)
-    files_infos_df.sort_index(inplace=True)
-    files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
-    files_infos_df["date"] = files_infos_df.index.date  # type: ignore
-    return files_infos_df
+            update_stocks(db, dfs, symbol_to_companies)
+        except:
+            db.connection.rollback()
+            print("Error, for ", dates_group)
+        else:
+            update_file_done(db, files_infos_df_group)
+            print("Done for ", dates_group)
 
-
-def get_files_infos_df(backup_path: Optional[str] = None) -> pd.DataFrame:
-    if backup_path:
-        return pd.read_pickle(backup_path)
-    files_infos: list[FileInfo] = []
-
-    for root, dirs, files in os.walk(DATA_PATH):
-        if len(dirs) > 0:
-            continue
-        year = int(root.split("/")[-1])
-        for file in files:
-            if file[0] == ".":
-                continue
-            market = file.split(" ")[0]
-            timestamp = " ".join(file.split(" ")[1:]).split(".")[0]
-            files_infos.append(
-                FileInfo(
-                    market=market,
-                    path=os.path.join(root, file),
-                    year=year,
-                    timestamp=timestamp,
-                )
-            )
-    files_infos_df = pd.DataFrame(files_infos)
-    files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
-    files_infos_df.set_index("timestamp", inplace=True)
-    files_infos_df.sort_index(inplace=True)
-    files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
-    files_infos_df["date"] = files_infos_df.index.date  # type: ignore
-    return files_infos_df
-
-
-# TODO
-def read_file(path: str) -> pd.DataFrame:
-    df: pd.DataFrame = pd.read_pickle(path)
-    df["last_suffix"] = df["last"].astype(str).str.extract(r"\((.*?)\)", expand=False)
-    df["last"] = (
-        df["last"]
-        .astype(str)
-        .str.replace(r"\((.*?)\)", "", regex=True)
-        .str.replace(" ", "")
-        .astype(float)
-    )
-    timestamp = " ".join(path.split(" ")[1:]).split(".")[0]
-    df["timestamp"] = pd.to_datetime(timestamp)
-    df["symbol"] = df["symbol"].astype(str)
-    df["name"] = df["name"].astype(str)
-    # df["volume"] =  df["volume"].apply(lambda x: np.nan if x < 0 else x).ffill()
-    df.attrs = {"timestamp": timestamp}
-    return df
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        list(tqdm(executor.map(process_dates_group, dates[:2]), total=len(dates)))
 
 
 if __name__ == "__main__":
@@ -103,4 +122,5 @@ if __name__ == "__main__":
         if IS_DOCKER
         else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
     )
+    update_timescale_db(db)
     print("Done")

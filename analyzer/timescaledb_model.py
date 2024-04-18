@@ -261,8 +261,8 @@ class TimescaleStockMarketModel:
             # Create tables
             self._create_table("markets", "id SMALLINT PRIMARY KEY DEFAULT nextval('market_id_seq'), name VARCHAR, alias VARCHAR")
             self._create_table("companies", "id SMALLINT PRIMARY KEY DEFAULT nextval('company_id_seq'), name VARCHAR, ticker VARCHAR, mid SMALLINT, symbol VARCHAR, symbol_nf VARCHAR, isin CHAR(12), reuters VARCHAR, boursorama VARCHAR, pea BOOLEAN, sector INTEGER")
-            self._create_table("stocks", "date TIMESTAMPTZ, cid SMALLINT, value FLOAT4, volume INT")
-            self._create_table("daystocks", "date TIMESTAMPTZ, cid SMALLINT, open FLOAT4, close FLOAT4, high FLOAT4, low FLOAT4, volume INT")
+            self._create_table("stocks", "date TIMESTAMPTZ, cid SMALLINT, value FLOAT4, volume INT8")
+            self._create_table("daystocks", "date TIMESTAMPTZ, cid SMALLINT, open FLOAT4, close FLOAT4, high FLOAT4, low FLOAT4, volume INT8")
             self._create_table("file_done", "name VARCHAR PRIMARY KEY")
             self._create_table("tags", "name VARCHAR PRIMARY KEY, value VARCHAR")
 
