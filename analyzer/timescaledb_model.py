@@ -3,11 +3,11 @@
 # TimeScaleDB
 # pipenv install sqlalchemy-timescaledb
 
-import datetime
+from constant import DATA_PATH, IS_DOCKER
 import psycopg2
+from io import StringIO
 import pandas as pd
 import sqlalchemy
-from constant import DATA_PATH, IS_DOCKER
 import os
 import time
 
@@ -330,6 +330,29 @@ class TimescaleStockMarketModel:
             return cursor.fetchall()
         except:
             pass
+
+    def copy_from_stringio(self, df, table):
+        """
+        Copy DataFrame to PostgreSQL table using psycopg2's copy_from method.
+        """
+        # Save DataFrame to an in-memory buffer
+        buffer = StringIO()
+        df.to_csv(buffer, index=True, header=False)
+        buffer.seek(0)  # Rewind buffer to the beginning
+        print("OK")
+        cursor = self.__connection.cursor()
+        print("OK2")
+        try:
+            # Copy data from buffer to table
+            cursor.copy_from(buffer, table, sep=',', null='NULL')
+            print("OK3")
+            self.__connection.commit()
+            print("OK4")
+        except Exception as e:
+            print(f"Error: {e}")
+            self.__connection.rollback()
+        # finally:
+        #     cursor.close()
 
     def df_write(self, df, table, args=None, commit=False,
                  if_exists='append', index=True, index_label=None,

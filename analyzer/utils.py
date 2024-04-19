@@ -44,6 +44,7 @@ def get_files_infos_windows_df() -> pd.DataFrame:
         files_infos_df.sort_index(inplace=True)
         files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
         files_infos_df["date"] = files_infos_df.index.date  # type: ignore
+        files_infos_df["name"] = files_infos_df["path"].apply(lambda x: os.path.basename(x))
         files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
 
@@ -77,6 +78,7 @@ def get_files_infos_df() -> pd.DataFrame:
         files_infos_df.sort_index(inplace=True)
         files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
         files_infos_df["date"] = files_infos_df.index.date  # type: ignore
+        files_infos_df["name"] = files_infos_df["path"].apply(lambda x: os.path.basename(x))
         files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
 
