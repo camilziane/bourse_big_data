@@ -10,11 +10,11 @@ from datetime import date
 from functools import partial
 import time
 
-def init_db(clean_setup=False, show_log_path=False) -> tsdb.TimescaleStockMarketModel:
+def init_db(setup=False, clean_setup=False, show_log_path=False) -> tsdb.TimescaleStockMarketModel:
     return (
-        tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp", clean_setup=clean_setup, show_log_path=show_log_path)
+        tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp", setup=setup, clean_setup=clean_setup, show_log_path=show_log_path)
         if IS_DOCKER
-        else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp", clean_setup=clean_setup, show_log_path=show_log_path)
+        else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp", setup=setup, clean_setup=clean_setup, show_log_path=show_log_path)
     )
 
 
@@ -53,9 +53,10 @@ def update_daystocks(db, df_stocks: pd.DataFrame, commit: bool = False):
         high=("value", "max"),
         low=("value", "min"),
         volume=("volume", "last"),
-        # mean=("value", "mean"),
-        # std=("value", "std"),
+        mean=("value", "mean"),
+        std=("value", "std"),
     ) 
+    df_daystocks = df_daystocks.fillna(0)
     db.copy_from_stringio(df_daystocks, "daystocks", commit=commit)
 
 
@@ -109,7 +110,7 @@ def process_date_group(
         df_stocks = update_stocks(db, dfs, symbol_to_companies)
         update_daystocks(db, df_stocks)
         update_file_done(db, date_group_files_df)
-        db.connection.commit()
+        db.commit()
     except Exception as e:
         db.connection.rollback()
         print(date_group, "Error: ", e)
@@ -128,7 +129,7 @@ def update_timescale_db(db: tsdb.TimescaleStockMarketModel):
     files_not_dones_df = get_file_not_dones_df(db, files_infos_df)
     dates = files_not_dones_df["date"].unique()
     date_groups = np.array_split(dates, len(dates) // 1)
-    date_groups = date_groups[:2] 
+    date_groups = date_groups[:64] 
     indexes = np.arange(1, len(date_groups) + 1)
     process_date_group_partial = partial(
         process_date_group,
