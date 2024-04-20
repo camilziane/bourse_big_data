@@ -12,7 +12,7 @@ DATABASE_URI = (
     "timescaledb://ricou:monmdp@db:5432/bourse"
     if IS_DOCKER
     else "timescaledb://ricou:monmdp@localhost:5432/bourse"
-)
+)  # outisde docker
 engine = sqlalchemy.create_engine(DATABASE_URI)
 
 app = dash.Dash(
@@ -42,13 +42,14 @@ app.layout = html.Div(
     ddep.State("sql-query", "value"),
 )
 def run_query(n_clicks, query):
+
     if n_clicks > 0:
         try:
             result_df = pd.read_sql_query(query, engine)
             return html.Pre(result_df.to_string())
         except Exception as e:
             return html.Pre(str(e))
-    return "Enter a query and press execute."
+    return f"Enter a query and press execute."
 
 
 if __name__ == "__main__":

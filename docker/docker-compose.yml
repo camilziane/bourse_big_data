@@ -37,6 +37,8 @@ services:
 
   dashboard:
     image: my_dashboard
+    environment:
+      - IS_DOCKER=True
     networks:
       - boursenet
     ports:
