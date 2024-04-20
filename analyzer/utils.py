@@ -4,14 +4,13 @@ import pandas as pd
 from tqdm import tqdm
 import pandas as pd
 import os
+import time
 from constant import DATA_PATH, DATA_PATH_SAMY, FILES_INFO_PATH
 from models import FileInfo
 
 
-def get_files_infos_windows_df() -> pd.DataFrame:
-    try:
-        return pd.read_pickle(FILES_INFO_PATH)
-    except:
+def get_files_infos_windows_df(cache = False) -> pd.DataFrame:
+    def _get_files_infos_df():
         files_infos = []
 
         for root, dirs, files in os.walk(DATA_PATH_SAMY):
@@ -47,14 +46,17 @@ def get_files_infos_windows_df() -> pd.DataFrame:
         files_infos_df["name"] = files_infos_df["path"].apply(lambda x: os.path.basename(x))
         files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
+    if cache: 
+        try:
+            return pd.read_pickle(FILES_INFO_PATH)
+        except:
+            return _get_files_infos_df()
+    else:
+        return _get_files_infos_df()
 
-
-def get_files_infos_df() -> pd.DataFrame:
-    try:
-        return pd.read_pickle(FILES_INFO_PATH)
-    except:
+def get_files_infos_df(cache = False) -> pd.DataFrame:
+    def _get_files_infos_df():
         files_infos: list[FileInfo] = []
-
         for root, dirs, files in os.walk(DATA_PATH):
             if len(dirs) > 0:
                 continue
@@ -81,6 +83,13 @@ def get_files_infos_df() -> pd.DataFrame:
         files_infos_df["name"] = files_infos_df["path"].apply(lambda x: os.path.basename(x))
         files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
+    if cache:
+        try:
+            return pd.read_pickle(FILES_INFO_PATH)
+        except:
+            return _get_files_infos_df()
+    else:
+        return _get_files_infos_df()
 
 
 def read_file(path: str) -> pd.DataFrame:
@@ -113,3 +122,13 @@ def multi_read_df_from_paths(
         for future in tqdm(futures):
             dfs.append(future.result())
     return dfs
+
+
+def timer_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"Function {func.__name__} took {(end_time - start_time)} seconds to run.")
+        return result
+    return wrapper

@@ -331,26 +331,26 @@ class TimescaleStockMarketModel:
         except:
             pass
 
-    def copy_from_stringio(self, df, table):
+    def copy_from_stringio(self, df: pd.DataFrame | pd.Series, table: str, index=True, commit = True):
         """
         Copy DataFrame to PostgreSQL table using psycopg2's copy_from method.
         """
         # Save DataFrame to an in-memory buffer
+        # self.connection = self.connect_to_database()
         buffer = StringIO()
-        df.to_csv(buffer, index=True, header=False)
+        df.to_csv(buffer, index=index, header=False)
         buffer.seek(0)  # Rewind buffer to the beginning
-        print("OK")
         cursor = self.__connection.cursor()
-        print("OK2")
-        try:
-            # Copy data from buffer to table
-            cursor.copy_from(buffer, table, sep=',', null='NULL')
-            print("OK3")
-            self.__connection.commit()
-            print("OK4")
-        except Exception as e:
-            print(f"Error: {e}")
-            self.__connection.rollback()
+        with self.__connection.cursor() as cursor:
+            try:
+                cursor.copy_from(buffer, table, sep=',')
+                self.__connection.commit()
+            except psycopg2.Error as e:
+                print(f"Error in thread: {e}")
+                self.__connection.rollback()
+            finally:
+                cursor.close()
+                buffer.close()
         # finally:
         #     cursor.close()
 

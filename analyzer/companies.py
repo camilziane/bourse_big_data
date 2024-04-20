@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from utils import multi_read_df_from_paths, get_files_infos_df
+from utils import multi_read_df_from_paths
 from timescaledb_model import TimescaleStockMarketModel
 
 
@@ -63,27 +63,39 @@ def dfs_to_companie(
 
 def update_companies(
     db: TimescaleStockMarketModel,
-    dfs_amsterdam: list[pd.DataFrame],
-    dfs_compA: list[pd.DataFrame],
-    dfs_compB: list[pd.DataFrame],
-    dfs_peapme: list[pd.DataFrame],
+    files_infos_df: pd.DataFrame,
 ):
+    companies = db.raw_query("SELECT * FROM companies")
+    if len(companies) > 0:
+        return
+    companies_files = files_infos_df.groupby(["market", "date"]).first()
+    companies_files.reset_index(inplace=True)
+
+    dfs_amsterdam = multi_read_df_from_paths(
+        list(companies_files[companies_files["market"] == "amsterdam"]["path"])
+    )
+    dfs_compA = multi_read_df_from_paths(
+        list(companies_files[companies_files["market"] == "compA"]["path"])
+    )
+    dfs_compB = multi_read_df_from_paths(
+        list(companies_files[companies_files["market"] == "compB"]["path"])
+    )
+    dfs_peapme = multi_read_df_from_paths(
+        list(companies_files[companies_files["market"] == "peapme"]["path"])
+    )
     amsterdam_companies = dfs_to_companie(
         dfs_amsterdam, db.prefix_to_market_id, default_mid=db.nasdaq_market_id
     )
-
     compA_companies = dfs_to_companie(
         dfs_compA,
         prefix_to_market_id=db.prefix_to_market_id,
         default_mid=db.prefix_to_market_id["1rP"],
     )
-
     compB_companies = dfs_to_companie(
         dfs_compB,
         prefix_to_market_id=db.prefix_to_market_id,
         default_mid=db.prefix_to_market_id["1rP"],
     )
-
     peapme_companies = dfs_to_companie(
         dfs_peapme,
         prefix_to_market_id=db.prefix_to_market_id,

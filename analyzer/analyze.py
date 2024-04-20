@@ -4,11 +4,18 @@ import timescaledb_model as tsdb
 import numpy as np
 import concurrent.futures
 import os
-from utils import get_files_infos_df
+from utils import get_files_infos_df, timer_decorator
 from companies import update_companies, multi_read_df_from_paths
-from datetime import datetime, timedelta, date
+from datetime import date
+from functools import partial
 
-from tqdm import tqdm
+
+def init_db() -> tsdb.TimescaleStockMarketModel:
+    return (
+        tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp")
+        if IS_DOCKER
+        else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
+    )
 
 
 def dfs_to_stocks(dfs: list[pd.DataFrame]) -> pd.DataFrame:
@@ -31,42 +38,34 @@ def dfs_to_stocks(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     )
     df_stocks["volume"] = df_stocks["volume"].ffill()
     df_stocks.reset_index(inplace=True)
-    df_stocks = df_stocks[(df_stocks["volume"] > 0 ) & (df_stocks["last"] > 0)]
-    print(len(df_stocks[df_stocks["volume"] < 0]))
+    df_stocks = df_stocks[(df_stocks["volume"] > 0) & (df_stocks["last"] > 0)]
+    if len(df_stocks[df_stocks["volume"] < 0]) > 0:
+        raise ValueError("Negative volume")
     return df_stocks
 
 
-def update_daystocks(db, dates_group: list[date]):
-    db.execute(
-        f"""
-  INSERT INTO daystocks (date, cid, open, close, high, low, volume)
-  SELECT
-  DATE(date) AS date,
-  cid,
-  FIRST(value, date) AS open,
-  LAST(value, date) AS close,
-  MAX(value) AS high,
-  MIN(value) AS low,
-  LAST(volume, date) AS volume
-  FROM
-  stocks
-  WHERE
-  date > '{dates_group[0]}' and date < '{dates_group[1] +timedelta(days=1) if len(dates_group) > 1 else dates_group[0] + timedelta(days=1)}'
-  GROUP BY
-    cid,
-    DATE(date)
-  ORDER BY
-    DATE(date) DESC
-  """,
-        commit=True,
-    )
+def update_daystocks(db, df_stocks: pd.DataFrame):
+    print("Updating daystocks")
+    df_stocks.reset_index(inplace=True)
+    df_stocks["date"] = df_stocks["date"].dt.date
+    df_daystocks = df_stocks.groupby(["date", "cid"]).agg(
+        open=("value", "first"),
+        close=("value", "last"),
+        high=("value", "max"),
+        low=("value", "min"),
+        volume=("volume", "last"),
+        # mean=("value", "mean"),
+        # std=("value", "std"),
+    ) 
+    db.copy_from_stringio(df_daystocks, "daystocks")
+
 
 
 def update_stocks(
     db: tsdb.TimescaleStockMarketModel,
     dfs: list[pd.DataFrame],
     symbol_to_companies: dict,
-):
+) -> pd.DataFrame:
     df_stocks = dfs_to_stocks(dfs)
     df_stocks["cid"] = df_stocks["symbol"].apply(
         lambda x: symbol_to_companies.get(x, None)
@@ -74,10 +73,11 @@ def update_stocks(
     df_stocks.rename(columns={"timestamp": "date", "last": "value"}, inplace=True)
     df_stocks = df_stocks[["date", "cid", "value", "volume"]]
     df_stocks.set_index("date", inplace=True)
-    df_stocks["cid"] = df_stocks['cid'].astype(np.int16)
-    df_stocks['value'] = df_stocks['value'].astype(np.float32)
-    df_stocks['volume'] = df_stocks['volume'].astype(np.int64)
+    df_stocks["cid"] = df_stocks["cid"].astype(np.int16)
+    df_stocks["value"] = df_stocks["value"].astype(np.float32)
+    df_stocks["volume"] = df_stocks["volume"].astype(np.int64)
     db.copy_from_stringio(df_stocks, "stocks")
+    return df_stocks
 
 
 def get_file_not_dones_df(
@@ -89,67 +89,57 @@ def get_file_not_dones_df(
 
 def update_file_done(db: tsdb.TimescaleStockMarketModel, files_infos_df: pd.DataFrame):
     files_dones = files_infos_df["name"]
-    db.df_write(files_dones, "file_done", index=False)
+    db.copy_from_stringio(files_dones, "file_done", index=False)
 
 
+def process_date_group(
+    date_group: list[date],
+    index: int,
+    symbol_to_companies: dict,
+    files_infos_df: pd.DataFrame,
+    nb_date_group: int,
+):
+    print("Processing dates group: ", date_group, "index: ", index, "/", nb_date_group)
+    db = init_db()
+    date_group_files_df = files_infos_df[files_infos_df["date"].isin(date_group)]
+    stock_paths = list(date_group_files_df["path"])
+    dfs = multi_read_df_from_paths(stock_paths)
+    try:
+        df_stocks = update_stocks(db, dfs, symbol_to_companies)
+        update_daystocks(db, df_stocks)
+    except Exception as e:
+        db.connection.rollback()
+        print(date_group, "Error: ", e)
+    else:
+        update_file_done(db, date_group_files_df)
+        print("Done for ", date_group, "index: ", index, "/", nb_date_group)
+
+
+
+@timer_decorator
 def update_timescale_db(db: tsdb.TimescaleStockMarketModel):
-    companies = db.raw_query("SELECT * FROM companies")
     files_infos_df = get_files_infos_df()
-
-    if len(companies) == 0:
-        companies_files = files_infos_df.groupby(["market", "date"]).first()
-        companies_files.reset_index(inplace=True)
-        dfs_amsterdam = multi_read_df_from_paths(
-            list(companies_files[companies_files["market"] == "amsterdam"]["path"])
-        )
-        dfs_compA = multi_read_df_from_paths(
-            list(companies_files[companies_files["market"] == "compA"]["path"])
-        )
-        dfs_compB = multi_read_df_from_paths(
-            list(companies_files[companies_files["market"] == "compB"]["path"])
-        )
-        dfs_peapme = multi_read_df_from_paths(
-            list(companies_files[companies_files["market"] == "peapme"]["path"])
-        )
-        update_companies(db, dfs_amsterdam, dfs_compA, dfs_compB, dfs_peapme)
-        symbol_to_companies = {
-            v: k
-            for k, v in dict(db.raw_query("SELECT id, symbol FROM companies")).items()
-        }
+    update_companies(db, files_infos_df)
     symbol_to_companies = {
         v: k for k, v in dict(db.raw_query("SELECT id, symbol FROM companies")).items()
     }
     files_not_dones_df = get_file_not_dones_df(db, files_infos_df)
     dates = files_not_dones_df["date"].unique()
-    dates = np.array_split(dates, len(dates) // 1)
-    dates = dates[:2]
-
-    def process_dates_group(dates_group):
-        print("Processing dates group: ", dates_group)
-        files_infos_df_group = files_infos_df[files_infos_df["date"].isin(dates_group)]
-        stock_files = files_infos_df_group["path"]
-        dfs = multi_read_df_from_paths(list(stock_files))
-        try:
-            update_stocks(db, dfs, symbol_to_companies)
-            # update_daystocks(db, dates_group)
-        except Exception as e:
-            db.connection.rollback()
-            print(e)
-            print("Error, for ", dates_group)
-        else:
-            update_file_done(db, files_infos_df_group)
-            print("Done for ", dates_group)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-        list(tqdm(executor.map(process_dates_group, dates), total=len(dates)))
+    date_groups = np.array_split(dates, len(dates) // 4)
+    date_groups = date_groups[:8]  # get 2 months
+    indexes = np.arange(1, len(date_groups) + 1)
+    process_date_group_partial = partial(
+        process_date_group,
+        symbol_to_companies=symbol_to_companies,
+        files_infos_df=files_not_dones_df,
+        nb_date_group=len(date_groups),
+    )
+    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        executor.map(process_date_group_partial, date_groups, indexes)
 
 
 if __name__ == "__main__":
-    print(IS_DOCKER)
-    db = (
-        tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp")
-        if IS_DOCKER
-        else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
-    )
+    db = init_db()
+    print("Start updating timescale db")
     update_timescale_db(db)
-    print("Done")
+    print("Finished updating timescale db")
