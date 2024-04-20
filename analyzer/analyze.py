@@ -8,13 +8,13 @@ from utils import get_files_infos_df, timer_decorator
 from companies import update_companies, multi_read_df_from_paths
 from datetime import date
 from functools import partial
+import time
 
-
-def init_db() -> tsdb.TimescaleStockMarketModel:
+def init_db(clean_setup=False, show_log_path=False) -> tsdb.TimescaleStockMarketModel:
     return (
-        tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp")
+        tsdb.TimescaleStockMarketModel("bourse", "ricou", "db", "monmdp", clean_setup=clean_setup, show_log_path=show_log_path)
         if IS_DOCKER
-        else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp")
+        else tsdb.TimescaleStockMarketModel("bourse", "ricou", "localhost", "monmdp", clean_setup=clean_setup, show_log_path=show_log_path)
     )
 
 
@@ -44,8 +44,7 @@ def dfs_to_stocks(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     return df_stocks
 
 
-def update_daystocks(db, df_stocks: pd.DataFrame):
-    print("Updating daystocks")
+def update_daystocks(db, df_stocks: pd.DataFrame, commit: bool = False):
     df_stocks.reset_index(inplace=True)
     df_stocks["date"] = df_stocks["date"].dt.date
     df_daystocks = df_stocks.groupby(["date", "cid"]).agg(
@@ -57,7 +56,7 @@ def update_daystocks(db, df_stocks: pd.DataFrame):
         # mean=("value", "mean"),
         # std=("value", "std"),
     ) 
-    db.copy_from_stringio(df_daystocks, "daystocks")
+    db.copy_from_stringio(df_daystocks, "daystocks", commit=commit)
 
 
 
@@ -65,6 +64,7 @@ def update_stocks(
     db: tsdb.TimescaleStockMarketModel,
     dfs: list[pd.DataFrame],
     symbol_to_companies: dict,
+    commit: bool = False,
 ) -> pd.DataFrame:
     df_stocks = dfs_to_stocks(dfs)
     df_stocks["cid"] = df_stocks["symbol"].apply(
@@ -76,7 +76,7 @@ def update_stocks(
     df_stocks["cid"] = df_stocks["cid"].astype(np.int16)
     df_stocks["value"] = df_stocks["value"].astype(np.float32)
     df_stocks["volume"] = df_stocks["volume"].astype(np.int64)
-    db.copy_from_stringio(df_stocks, "stocks")
+    db.copy_from_stringio(df_stocks, "stocks", commit=commit)
     return df_stocks
 
 
@@ -87,9 +87,9 @@ def get_file_not_dones_df(
     return files_infos_df[~files_infos_df["name"].isin(files_names)]
 
 
-def update_file_done(db: tsdb.TimescaleStockMarketModel, files_infos_df: pd.DataFrame):
+def update_file_done(db: tsdb.TimescaleStockMarketModel, files_infos_df: pd.DataFrame, commit: bool = False):
     files_dones = files_infos_df["name"]
-    db.copy_from_stringio(files_dones, "file_done", index=False)
+    db.copy_from_stringio(files_dones, "file_done", index=False, commit=commit)
 
 
 def process_date_group(
@@ -99,7 +99,8 @@ def process_date_group(
     files_infos_df: pd.DataFrame,
     nb_date_group: int,
 ):
-    print("Processing dates group: ", date_group, "index: ", index, "/", nb_date_group)
+    start_time = time.time()
+    print("Processing: ", ", ".join([d.isoformat() for d in date_group]), ", index: ", index, "/", nb_date_group)
     db = init_db()
     date_group_files_df = files_infos_df[files_infos_df["date"].isin(date_group)]
     stock_paths = list(date_group_files_df["path"])
@@ -107,12 +108,13 @@ def process_date_group(
     try:
         df_stocks = update_stocks(db, dfs, symbol_to_companies)
         update_daystocks(db, df_stocks)
+        update_file_done(db, date_group_files_df)
+        db.connection.commit()
     except Exception as e:
         db.connection.rollback()
         print(date_group, "Error: ", e)
     else:
-        update_file_done(db, date_group_files_df)
-        print("Done for ", date_group, "index: ", index, "/", nb_date_group)
+        print("Done for ",  ", ".join([d.isoformat() for d in date_group]), ", index: ", index, "/", nb_date_group, ", time: ", time.time() - start_time, "s")
 
 
 
@@ -125,8 +127,8 @@ def update_timescale_db(db: tsdb.TimescaleStockMarketModel):
     }
     files_not_dones_df = get_file_not_dones_df(db, files_infos_df)
     dates = files_not_dones_df["date"].unique()
-    date_groups = np.array_split(dates, len(dates) // 4)
-    date_groups = date_groups[:8]  # get 2 months
+    date_groups = np.array_split(dates, len(dates) // 1)
+    date_groups = date_groups[:2] 
     indexes = np.arange(1, len(date_groups) + 1)
     process_date_group_partial = partial(
         process_date_group,
@@ -139,7 +141,7 @@ def update_timescale_db(db: tsdb.TimescaleStockMarketModel):
 
 
 if __name__ == "__main__":
-    db = init_db()
+    db = init_db(clean_setup=True, show_log_path=True)
     print("Start updating timescale db")
     update_timescale_db(db)
     print("Finished updating timescale db")

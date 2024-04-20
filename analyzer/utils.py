@@ -1,7 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
 import pandas as pd
-from tqdm import tqdm
 import pandas as pd
 import os
 import time
@@ -119,7 +118,7 @@ def multi_read_df_from_paths(
         futures = []
         for path in paths:
             futures.append(executor.submit(read_function, path))
-        for future in tqdm(futures):
+        for future in futures:
             dfs.append(future.result())
     return dfs
 

@@ -16,7 +16,7 @@ import mylogging
 class TimescaleStockMarketModel:
     """ Bourse model with TimeScaleDB persistence."""
 
-    def __init__(self, database, user=None, host=None, password=None, port=None,setup=False):
+    def __init__(self, database, user=None, host=None, password=None, port=None,clean_setup=False, show_log_path=False):
         """Create a TimescaleStockMarketModel
 
         database -- The name of the persistence database.
@@ -25,7 +25,7 @@ class TimescaleStockMarketModel:
 
         """
 
-        self.logger = mylogging.getLogger(__name__, filename= os.path.join(DATA_PATH, "bourse.log") if not IS_DOCKER else "/tmp/bourse.log") 
+        self.logger = mylogging.getLogger(__name__, show_log_path = show_log_path,filename= os.path.join(DATA_PATH, "bourse.log") if not IS_DOCKER else "/tmp/bourse.log") 
 
         self.__database = database
         self.__user = user or database
@@ -34,13 +34,13 @@ class TimescaleStockMarketModel:
         self.__password = password or ''
         self.__squash = False
         
-        self.connection = self.connect_to_database()
-        self.__connection = self.connect_to_database() 
+        # self.connection = self.connect_to_database()
+        self.connection = self.connect_to_database() 
         self.__engine = sqlalchemy.create_engine(f'timescaledb://{self.__user}:{self.__password}@{self.__host}:{self.__port}/{self.__database}')
         self.__nf_cid = {}  # cid from netfonds symbol
         self.__boursorama_cid = {}  # cid from netfonds symbol
         self.logger.info("Setup database generates an error if it exists already, it's ok")
-        if setup:
+        if clean_setup:
             self.clean_database()
             self._setup_database()
         self.__prefix_to_alias = {"1rP": "e_paris", "1rA": "e_amsterdam",  "1rE": "e_paris",   "FF1": "e_bruxelle"}  # prefix to alias
@@ -65,103 +65,103 @@ class TimescaleStockMarketModel:
     
     def _create_sequence(self, sequence_name, commit=False):
         """Create a sequence in the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"CREATE SEQUENCE {sequence_name};")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error creating sequence: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _drop_sequence(self, sequence_name, commit=False):
         """Drop a sequence from the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"DROP SEQUENCE IF EXISTS {sequence_name};")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error dropping sequence: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _create_table(self, table_name, columns_definition, commit=False):
         """Create a table in the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"CREATE TABLE {table_name} ({columns_definition});")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error creating table: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _drop_table(self, table_name, commit=False):
         """Drop a table from the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error dropping table: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _create_hypertable(self, table_name, time_column, commit=False):
         """Create a hypertable in the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"SELECT create_hypertable('{table_name}', '{time_column}');")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error creating hypertable: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _drop_hypertable(self, table_name, commit=False):
         """Drop a hypertable from the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"SELECT drop_hypertable('{table_name}');")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error dropping hypertable: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _create_index(self, table_name, index_name, columns, commit=False):
         """Create an index in the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"CREATE INDEX {index_name} ON {table_name} ({columns});")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error creating index: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _drop_index(self, index_name, commit=False):
         """Drop an index from the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             cursor.execute(f"DROP INDEX IF EXISTS {index_name};")
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error dropping index: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _insert_data(self, table_name, data, commit=False):
         """Insert data into a table in the database."""
-        cursor = self.__connection.cursor()
+        cursor = self.connection.cursor()
         try:
             for row in data:
                 cursor.execute(f"INSERT INTO {table_name} VALUES %s;", (row,))
             if commit:
-                self.__connection.commit()
+                self.connection.commit()
         except Exception as e:
             print(f"Error inserting data: {e}")
-            self.__connection.rollback()  # Rollback the current transaction
+            self.connection.rollback()  # Rollback the current transaction
 
     def _setup_database2(self):
         try:
@@ -171,7 +171,7 @@ class TimescaleStockMarketModel:
             #   drop schema public cascade;
             #   create schema public;
             #
-            cursor = self.__connection.cursor()
+            cursor = self.connection.cursor()
             # markets (see end for list of makets)
             cursor.execute('''CREATE SEQUENCE market_id_seq START 1;''')
             cursor.execute(
@@ -249,7 +249,7 @@ class TimescaleStockMarketModel:
             
         except Exception as e:
             self.logger.exception('SQL error: %s' % e)
-        self.__connection.commit()
+        self.connection.commit()
     
     def _setup_database(self):
         """Setup the database schema."""
@@ -295,7 +295,7 @@ class TimescaleStockMarketModel:
 
         except Exception as e:
             self.logger.exception('SQL error: %s' % e)
-        self.__connection.commit()
+        self.connection.commit()
     
     def clean_database(self):
         self._drop_table("markets")
@@ -322,7 +322,7 @@ class TimescaleStockMarketModel:
             pretty = '%s %% %r' % (query, args)
         self.logger.debug('SQL: QUERY: %s' % pretty)
         if cursor is None:
-            cursor = self.__connection.cursor()
+            cursor = self.connection.cursor()
         cursor.execute(query, args)
         if commit:
             self.commit()
@@ -340,15 +340,19 @@ class TimescaleStockMarketModel:
         buffer = StringIO()
         df.to_csv(buffer, index=index, header=False)
         buffer.seek(0)  # Rewind buffer to the beginning
-        cursor = self.__connection.cursor()
-        with self.__connection.cursor() as cursor:
+        cursor = self.connection.cursor()
+        with self.connection.cursor() as cursor:
             try:
+                self.logger.debug('copy_from_stringio')
                 cursor.copy_from(buffer, table, sep=',')
-                self.__connection.commit()
+                if commit :
+                    self.connection.commit()
             except psycopg2.Error as e:
-                print(f"Error in thread: {e}")
-                self.__connection.rollback()
-            finally:
+                print(f"Error during copy: {e}")
+                cursor.close()
+                buffer.close()
+                raise(e)
+            else:
                 cursor.close()
                 buffer.close()
         # finally:
@@ -381,7 +385,7 @@ class TimescaleStockMarketModel:
             pretty = '%s %% %r' % (query, args)
         self.logger.debug('SQL: QUERY: %s' % pretty)
         if cursor is None:
-            cursor = self.__connection.cursor()
+            cursor = self.connection.cursor()
         cursor.execute(query, args)
         return cursor.fetchall()
 
@@ -407,7 +411,7 @@ class TimescaleStockMarketModel:
 
     def commit(self):
         if not self.__squash:
-            self.__connection.commit()
+            self.connection.commit()
 
     # write here your methods which SQL requests
 
