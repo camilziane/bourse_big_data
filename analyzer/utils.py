@@ -74,7 +74,12 @@ def get_files_infos_df(cache = False) -> pd.DataFrame:
                     )
                 )
         files_infos_df = pd.DataFrame(files_infos)
-        files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
+        try:
+            files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
+        except Exception as e:
+            # print("windows timestamp : ",  e)
+            files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"], format="%Y-%m-%d %H_%M_%S")
+
         files_infos_df.set_index("timestamp", inplace=True)
         files_infos_df.sort_index(inplace=True)
         files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
@@ -102,7 +107,11 @@ def read_file(path: str) -> pd.DataFrame:
         .astype(float)
     )
     timestamp = " ".join(path.split(" ")[1:]).split(".")[0]
-    df["timestamp"] = pd.to_datetime(timestamp)
+    try:
+        df["timestamp"] = pd.to_datetime(timestamp)
+    except Exception as e:
+        # print("windows timestamp", e)
+        df["timestamp"] = pd.to_datetime(timestamp, format="%Y-%m-%d %H_%M_%S")
     df["symbol"] = df["symbol"].astype(str)
     df["name"] = df["name"].astype(str)
     df.attrs = {"timestamp": timestamp}
