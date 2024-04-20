@@ -37,4 +37,4 @@ ADD apps.tgz .
 # CMD service cron start  && \
 #     tail -f /var/log/cron.log
 
-CMD python3 analyze.py
+CMD python3 -u analyze.py
