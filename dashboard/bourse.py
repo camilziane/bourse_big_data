@@ -62,7 +62,8 @@ app.layout = html.Div(
         dcc.RadioItems(["Candle Stick", "Line"], "Line", id="chart-type"),
         dcc.Checklist(["Logarithmic"], [False], id="log-y"),
         # html.Div(id="companies-output-container"),
-        dcc.Graph(id="graph",style={'width': '90vh', 'height': '90vh'}),
+        dcc.Graph(id="graph",style={'width': '90%', 'height': '90vh'}),
+        html.Div(id="table-container"),
     ]
 )
 
@@ -115,7 +116,7 @@ def update_companies_chart(
                 engine,
             )
             
-            window = 20  # Parametre qui doit etre modifiable
+            window = 5  # Parametre qui doit etre modifiable
             df['MA'] = df['close'].rolling(window=window).mean()
             df['STD'] = df['close'].rolling(window=window).std()
             df['Upper'] = df['MA'] + (df['STD'] * 2)
@@ -186,6 +187,65 @@ def update_companies_chart(
             )
     return fig
 
+@app.callback(
+    ddep.Output("table-container", "children"),
+    [
+        ddep.Input("companies-dropdown", "value"),
+        ddep.Input("my-date-picker-range", "start_date"),
+        ddep.Input("my-date-picker-range", "end_date"),
+    ],
+)
+def update_table(values, start_date, end_date):
+    if not values or not start_date or not end_date:
+        return html.Table()
+    
+    dfs = []
 
+    end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
+
+    for i,value in enumerate(values):
+        label = companies_id_to_labels.get(value, '')
+        df = pd.read_sql_query(
+                f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
+                engine,
+            )
+        df['cid'] = label
+        dfs.append(df)
+
+    df = pd.concat(dfs)
+
+    table_style = {
+        'margin': '20px',
+        'border-collapse': 'collapse',
+        'width': '90%',
+        'border': '3px solid #ddd',
+    }
+
+    th_style = {
+        'padding-top': '12px',
+        'padding-bottom': '12px',
+        'text-align': 'center',
+        'background-color': '#f2f2f2',
+        'color': 'black',
+        'border': '1px solid #ddd',
+    }
+
+    td_style = {
+        'padding-top': '12px',
+        'padding-bottom': '12px',
+        'text-align': 'center',
+        'border': '1px solid #ddd',
+    }
+
+    df.rename(columns={"cid": "name"}, inplace=True)
+    
+    return html.Table(
+        # Header
+        [html.Tr([html.Th(col, style=th_style) for col in df.columns])] +
+        # Body
+        [html.Tr([html.Td(df.iloc[i][col], style=td_style) for col in df.columns]) for i in range(len(df))],
+        style=table_style,
+    )
+    
 if __name__ == "__main__":
     app.run(debug=True)
