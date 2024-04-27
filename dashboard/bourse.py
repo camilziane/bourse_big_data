@@ -1,6 +1,6 @@
 import dash
-from dash import dcc ,html
-import dash.dependencies as ddep
+import dash.dependencies as dde
+from dash import html ,dcc, dash_table
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import pandas as pd
@@ -12,9 +12,14 @@ import plotly.graph_objects as go
 import plotly.express as px
 import plotly.subplots as ms
 
+import plotly.io as pio
+
+pio.templates.default = "plotly_dark"
+
+
+#import ddep
 
 # external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-
 
 DATABASE_URI = (
     "timescaledb://ricou:monmdp@db:5432/bourse"
@@ -24,7 +29,7 @@ DATABASE_URI = (
 engine = sqlalchemy.create_engine(DATABASE_URI)
 
 app = dash.Dash(
-    __name__, title="Bourse", suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.BOOTSTRAP]
+    __name__, title="Bourse", suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.DARKLY]
 )  # , external_stylesheets=external_stylesheets)
 
 server = app.server
@@ -36,19 +41,37 @@ companies_id_to_labels = {row["id"]: row["name"] for _, row in companies.iterrow
 
 modal = dbc.Modal(
     [
-        dbc.ModalHeader(dbc.ModalTitle("Adjust Chart Settings")),
+        dbc.ModalHeader(dbc.ModalTitle("Adjust Chart Settings"), style={'color': 'white'}),
         dbc.ModalBody(
             dbc.Form([
-                dbc.Switch(id="switch-log", label="Logarithmic", value=False),
-                dbc.Switch(id="switch-volume", label="Volume", value=False),
-                dbc.Switch(id="switch-bollinger-bands", label="Bollinger Bands", value=False),
+                dbc.Switch(id="switch-log", label="Logarithmic", value=False, style={'color': 'white'}),
+                dbc.Switch(id="switch-volume", label="Volume", value=False, style={'color': 'white'}),
+                dbc.Switch(id="switch-bollinger-bands", label="Bollinger Bands", value=False, style={'color': 'white'}),
                 html.Div(
                     [
-                        dbc.Label("Bollinger Bands Window Size:"),
+                        dbc.Label("Bollinger Bands Window Size:", style={'color': 'white'}),
                         dbc.Input(type="number", id="bollinger-window", min=1, step=1, value=20, disabled=True)
                     ],
                     id="bollinger-window-container",
                     style={'display': 'none'} 
+                ),
+                html.Div(
+                    [
+                        dbc.Label("Select Chart Type:", style={'color': 'white'}),
+                        dbc.RadioItems(
+                            options=[
+                                {'label': 'Candle Stick', 'value': 'Candle Stick'},
+                                {'label': 'Line', 'value': 'Line'}
+                            ],
+                            value='Line',  
+                            id='chart-type',
+                            inline=True,
+                            switch=True,
+                            style={'color': 'white'},
+                            className="mt-2" 
+                        ),
+                    ],
+                    className='mt-3' 
                 )
             ])
         ),
@@ -59,7 +82,6 @@ modal = dbc.Modal(
     id="modal-settings",
     is_open=False
 )
-
 
 @app.callback(
     [Output("bollinger-window-container", "style"),
@@ -82,26 +104,67 @@ def toggle_modal(n1, n2, is_open):
         return not is_open
     return is_open
 
-open_modal_button = dbc.Button("Open Settings", id="open-settings", n_clicks=0)
 
-app.layout = html.Div(
+open_modal_button = dbc.Button("Settings 🛠️", id="open-settings", n_clicks=0)
+
+app.layout = dbc.Container(    
     [
-        open_modal_button,
-        modal,
-        dcc.DatePickerRange(
-            id="my-date-picker-range",
-            min_date_allowed=date(2019, 1, 1),
-            max_date_allowed=date(2023, 12, 31),
-            initial_visible_month=date(2019, 1, 1),
-            start_date=date(2019, 1, 1),
-            end_date=date(2023, 12, 31),
+        dbc.Row(
+            [
+dbc.Col(
+    html.H1(
+        "Market Analysis Dashboard",
+        className='text-center mb-4',
+        style={'color': 'lightgray'}
+    ),
+    width=12
+)
+            ]
         ),
-        html.Div(id="output-container-date-picker-range"),
-        dcc.Dropdown(companies_options, value=[4534], id="companies-dropdown", multi=True),
-        dcc.RadioItems(["Candle Stick", "Line"], "Line", id="chart-type"),
-        dcc.Graph(id="graph",style={'width': '90%', 'height': '90vh'}),
-        html.Div(id="table-container"),
+        dbc.Row(
+            [
+                
+                dbc.Col(open_modal_button, width={"size": 3, "offset": 0}),
+                
+            ],
+            className='mb-4'
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                dcc.DatePickerRange(
+                    id="my-date-picker-range",
+                    min_date_allowed=date(2019, 1, 1),
+                    max_date_allowed=date(2023, 12, 31),
+                    initial_visible_month=date(2019, 1, 1),
+                    start_date=date(2019, 1, 1),
+                    end_date=date(2023, 12, 31)
+                )
+
+                ),
+                dbc.Col(
+                    dcc.Dropdown(companies_options, value=[4534], id="companies-dropdown", multi=True, className='custom-dropdown'),
+                    width={"size": 5, "offset": 0},
+                    
+                )
+            ],
+                        className='mb-4'
+
+        ),
+       dbc.Row(
+    [
+        dbc.Col(dcc.Graph(id="graph", style={'height': '70vh'}))
     ]
+)
+,
+        dbc.Row(
+            [
+               dbc.Col(dbc.Table(id="table-container", style={'margin': 'auto', 'display': 'block'}))
+            ]
+        ),
+        modal
+    ],
+    fluid=True
 )
 
 
@@ -222,22 +285,15 @@ def update_companies_chart(
         fig.update_yaxes(title_text=f"Volume {label}", row=2, col=1)
 
         
-    fig.update_layout(xaxis_rangeslider_visible=False,
-
-                       title={
-                            'text': f"Daily chart",    
-                            'x': 0.5,
-                            'xanchor': 'center'
-                        }, 
-            )
+    fig.update_layout(xaxis_rangeslider_visible=False)
     return fig
 
 @app.callback(
-    ddep.Output("table-container", "children"),
+    Output("table-container", "children"),
     [
-        ddep.Input("companies-dropdown", "value"),
-        ddep.Input("my-date-picker-range", "start_date"),
-        ddep.Input("my-date-picker-range", "end_date"),
+        Input("companies-dropdown", "value"),
+        Input("my-date-picker-range", "start_date"),
+        Input("my-date-picker-range", "end_date"),
     ],
 )
 def update_table(values, start_date, end_date):
@@ -256,40 +312,19 @@ def update_table(values, start_date, end_date):
             )
         df['cid'] = label
         dfs.append(df)
-
     df = pd.concat(dfs)
+    df['date'] = df['date'].dt.strftime('%Y-%m-%d')
 
-    table_style = {
-        'margin': '20px',
-        'border-collapse': 'collapse',
-        'width': '90%',
-        'border': '3px solid #ddd',
-    }
-
-    th_style = {
-        'padding-top': '12px',
-        'padding-bottom': '12px',
-        'text-align': 'center',
-        'background-color': '#f2f2f2',
-        'color': 'black',
-        'border': '1px solid #ddd',
-    }
-
-    td_style = {
-        'padding-top': '12px',
-        'padding-bottom': '12px',
-        'text-align': 'center',
-        'border': '1px solid #ddd',
-    }
 
     df.rename(columns={"cid": "name"}, inplace=True)
     
-    return html.Table(
+    return dbc.Table(
         # Header
-        [html.Tr([html.Th(col, style=th_style) for col in df.columns])] +
+        [html.Tr([html.Th(col,style={
+                'color': '#626EFA',  # White text color
+            }) for col in df.columns])] +
         # Body
-        [html.Tr([html.Td(df.iloc[i][col], style=td_style) for col in df.columns]) for i in range(len(df))],
-        style=table_style,
+        [html.Tr([html.Td(df.iloc[i][col]) for col in df.columns]) for i in range(len(df))]
     )
     
 if __name__ == "__main__":
