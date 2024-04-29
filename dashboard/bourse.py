@@ -1,6 +1,6 @@
 import dash
 import dash.dependencies as dde
-from dash import html ,dcc, dash_table
+from dash import html ,dcc, dash_table, Input, Output, html, no_update
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import pandas as pd
@@ -11,6 +11,7 @@ from datetime import date, timedelta, datetime
 import plotly.graph_objects as go
 import plotly.express as px
 import plotly.subplots as ms
+
 
 import plotly.io as pio
 
@@ -109,51 +110,49 @@ open_modal_button = dbc.Button("Settings 🛠️", id="open-settings", n_clicks=
 
 app.layout = dbc.Container(    
     [
-        dbc.Row(
-            [
-dbc.Col(
-    html.H1(
-        "Market Analysis Dashboard",
-        className='text-center mb-4',
-        style={'color': 'lightgray'}
-    ),
-    width=12
+dbc.Row(
+    [
+        dbc.Col(open_modal_button, width={"size": 4, "offset": 0}),
+        dbc.Col(
+            dcc.Dropdown(
+                companies_options, value=[4534], id="companies-dropdown", multi=True, className='custom-dropdown'
+            ),
+            width={"size": 4, "offset": 0},
+            style={'margin': 'auto', 'display': 'block' , 'color': 'black'}
+        ),
+        dbc.Col(
+            dcc.DatePickerRange(
+                id="my-date-picker-range",
+                min_date_allowed=date(2019, 1, 1),
+                max_date_allowed=date(2023, 12, 31),
+                initial_visible_month=date(2019, 1, 1),
+                start_date=date(2019, 1, 1),
+                end_date=date(2023, 12, 31),
+            ),
+            width={"size": 4, "offset": 0},
+            style={'margin': 'auto', 'display': 'block', 'textAlign': 'left'}  # J'ai modifié ici pour aligner à gauche
+        )
+    ],
+    className='mb-4',
+    justify='between',
+    style={'align-items': 'center'}  # Ce style aligne verticalement les éléments au centre de la colonne.
 )
-            ]
-        ),
-        dbc.Row(
-            [
-                
-                dbc.Col(open_modal_button, width={"size": 3, "offset": 0}),
-                
-            ],
-            className='mb-4'
-        ),
-        dbc.Row(
-            [
-                dbc.Col(
-                dcc.DatePickerRange(
-                    id="my-date-picker-range",
-                    min_date_allowed=date(2019, 1, 1),
-                    max_date_allowed=date(2023, 12, 31),
-                    initial_visible_month=date(2019, 1, 1),
-                    start_date=date(2019, 1, 1),
-                    end_date=date(2023, 12, 31)
-                )
-
-                ),
-                dbc.Col(
-                    dcc.Dropdown(companies_options, value=[4534], id="companies-dropdown", multi=True, className='custom-dropdown'),
-                    width={"size": 5, "offset": 0},
-                    
-                )
-            ],
-                        className='mb-4'
-
-        ),
+,
        dbc.Row(
     [
-        dbc.Col(dcc.Graph(id="graph", style={'height': '70vh'}))
+        dbc.Col(dcc.Graph(
+    id="graph", 
+    style={'height': '70vh'},
+    config={
+        'displayModeBar': False
+    },
+    figure={
+        'layout': {
+            'plot_bgcolor': '#1D1D22',
+            'paper_bgcolor': '#1D1D22',
+        }
+    }
+))
     ]
 )
 ,
@@ -179,17 +178,41 @@ def create_candlestick_trace(df, label):
     )
 
 def create_bands_trace(df):
-    upper_trace = go.Scatter(x=df['date'], y=df['Upper'], mode='lines', name='Bande Supérieure', line=dict(color='rgba(0,0,255,0.2)'))
-    lower_trace = go.Scatter(x=df['date'], y=df['Lower'], mode='lines', name='Bande Inférieure', line=dict(color='rgba(255,0,0,0.2)'))
-    zone_trace = go.Scatter(x=df['date'].tolist() + df['date'].tolist()[::-1],
-                            y=df['Upper'].tolist() + df['Lower'].tolist()[::-1],
-                            fill='toself', fillcolor='rgba(0,0,255,0.1)', line=dict(color='rgba(255,255,255,0)'),
-                            name='Zone entre les bandes')
-    return upper_trace, lower_trace, zone_trace
+    upper_trace = go.Scatter(
+        x=df['date'], 
+        y=df['Upper'], 
+        mode='lines', 
+        name='Bande Supérieure', 
+        line=dict(color='rgba(33, 150, 243, 0.5)')
+    )
+    lower_trace = go.Scatter(
+        x=df['date'], 
+        y=df['Lower'], 
+        mode='lines', 
+        name='Bande Inférieure', 
+        line=dict(color='rgba(33, 150, 243, 0.5)')
+    )
+    zone_trace = go.Scatter(
+        x=df['date'].tolist() + df['date'].tolist()[::-1],
+        y=df['Upper'].tolist() + df['Lower'].tolist()[::-1],
+        fill='toself', 
+        fillcolor='rgba(33, 150, 243, 0.1)', 
+        line=dict(color='rgba(255, 255, 255, 0)'),
+        name='Zone entre les bandes'
+    )
+    # Adding the average trace
+    average_trace = go.Scatter(
+        x=df['date'],
+        y=df['MA'],
+        mode='lines',
+        name='Moyenne',
+        line=dict(color='rgba(255, 109, 1, 0.5)')  
+    )
+    return upper_trace, lower_trace, zone_trace, average_trace
 
 def create_volume_trace(df, label):
     df['change'] = df['close'] - df['open']
-    colors = ['green' if change > 0 else 'red' for change in df['change']]
+    colors = ['#47BB78' if change > 0 else '#F56565' for change in df['change']]
     return go.Bar(x=df["date"], y=df["volume"], marker_color=colors, name=f"Volume {label}")
 
 
@@ -248,10 +271,11 @@ def update_companies_chart(
                 df['STD'] = df['close'].rolling(window=bollinger_window).std()
                 df['Upper'] = df['MA'] + (df['STD'] * 2)
                 df['Lower'] = df['MA'] - (df['STD'] * 2)
-                upper_trace, lower_trace, zone_trace = create_bands_trace(df)
+                upper_trace, lower_trace, zone_trace , average_trace = create_bands_trace(df)
                 fig.add_trace(upper_trace)
                 fig.add_trace(lower_trace)
                 fig.add_trace(zone_trace)
+                fig.add_trace(average_trace)
         
         
     else:
@@ -269,10 +293,11 @@ def update_companies_chart(
                 df['STD'] = df['close'].rolling(window=bollinger_window).std()
                 df['Upper'] = df['MA'] + (df['STD'] * 2)
                 df['Lower'] = df['MA'] - (df['STD'] * 2)
-                upper_trace, lower_trace, zone_trace = create_bands_trace(df)
+                upper_trace, lower_trace, zone_trace , average_trace = create_bands_trace(df)
                 fig.add_trace(upper_trace)
                 fig.add_trace(lower_trace)
                 fig.add_trace(zone_trace)
+                fig.add_trace(average_trace)
     
     if log_y:
         fig.update_yaxes(type='log')
@@ -318,14 +343,43 @@ def update_table(values, start_date, end_date):
 
     df.rename(columns={"cid": "name"}, inplace=True)
     
-    return dbc.Table(
-        # Header
-        [html.Tr([html.Th(col,style={
-                'color': '#626EFA',  # White text color
-            }) for col in df.columns])] +
-        # Body
-        [html.Tr([html.Td(df.iloc[i][col]) for col in df.columns]) for i in range(len(df))]
-    )
+    
+    # Prétraitement pour créer une nouvelle colonne 'color'
+    df['color'] = df['close'].diff().apply(lambda x: 'green' if x > 0 else 'red')
+
+    return dash_table.DataTable(
+    id='table',
+    hidden_columns=['color'],
+    data=df.to_dict('records'),
+    page_current=0,
+        sort_action="native",  # Enable sorting on all sortable columns
+    page_size=10,
+    style_cell={'textAlign': 'left', 'color': 'white', 'backgroundColor': '#1D1D22',
+                'width': '100px', 
+                'minWidth': '100px',  
+                'maxWidth': '100px', 
+                'whiteSpace': 'normal',
+                'border': '1px solid #2E2E33',
+                }, 
+    style_header={
+        'backgroundColor': '#2E2E33',
+        'fontWeight': 'bold',
+        'color': 'white'
+    },
+    style_data_conditional=[
+        {
+            'if': {'filter_query': '{color} eq "green"'},
+            'column_id': '!date',
+            'color': '#47BB78'
+        },
+        {
+            'if': {'filter_query': '{color} eq "red"'},
+            'color': '#F56565',
+            'column_id': '!date'
+        }                
+    ]
+)
+
     
 if __name__ == "__main__":
     app.run(debug=True)
