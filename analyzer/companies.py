@@ -1,7 +1,9 @@
 import pandas as pd
+import concurrent.futures
 import numpy as np
-from utils import multi_read_df_from_paths
+from utils import  multi_read_df_from_paths, timer_decorator
 from timescaledb_model import TimescaleStockMarketModel
+from functools import partial
 
 
 map_prefix_to_symbol_nf = {
@@ -36,21 +38,19 @@ def update_mid_column(
     return df
 
 
-def dfs_to_companie(
-    dfs: list[pd.DataFrame],
+def df_to_companie(
+    df: pd.DataFrame,
     prefix_to_market_id: dict,
     default_mid: int,
     is_pea: bool = False,
 ) -> pd.DataFrame:
-    df_all_days = pd.concat(dfs)
-    df_all_days_grouped = (
-        df_all_days.reset_index(drop=True).groupby(["symbol", "name"]).last()
-    )
+    df.reset_index(inplace=True)
+    df_all_days_grouped = df.groupby(["symbol", "name"]).last()
     df_all_days_grouped["name"] = df_all_days_grouped.index.get_level_values(1)
     df_companies = df_all_days_grouped.groupby(
         df_all_days_grouped.index.get_level_values(0)
     ).last()
-    df_companies = df_companies.reset_index()[["symbol", "name", "timestamp"]]
+    df_companies = df_companies.reset_index()[["symbol", "name", "date"]]
     df_companies["prefix"] = df_companies["symbol"].apply(lambda x: x[0:3])
     df_companies = update_ticker_column(df_companies)
     df_companies = update_mid_column(
@@ -61,57 +61,79 @@ def dfs_to_companie(
     return df_companies
 
 
+def files_to_companies(
+    companies_files_paths: list[str],
+    default_mid: int,
+    prefix_to_market_id: dict,
+    num_thread: int,
+):
+    df = multi_read_df_from_paths(companies_files_paths, num_thread=num_thread)
+    companies = df_to_companie(
+        df,
+        prefix_to_market_id=prefix_to_market_id,
+        default_mid=default_mid,
+    )
+    return companies
+
+
+@timer_decorator
 def update_companies(
     db: TimescaleStockMarketModel,
     files_infos_df: pd.DataFrame,
+    num_cpus: int,
+    num_thread: int,
+    keep_first_last=True,
+    existing_symbols=[],
 ):
-    companies = db.raw_query("SELECT * FROM companies")
-    if len(companies) > 0:
-        return
-    companies_files = files_infos_df.groupby(["market", "date"]).first()
-    companies_files.reset_index(inplace=True)
-
-    dfs_amsterdam = multi_read_df_from_paths(
-        list(companies_files[companies_files["market"] == "amsterdam"]["path"])
-    )
-    dfs_compA = multi_read_df_from_paths(
-        list(companies_files[companies_files["market"] == "compA"]["path"])
-    )
-    dfs_compB = multi_read_df_from_paths(
-        list(companies_files[companies_files["market"] == "compB"]["path"])
-    )
-    dfs_peapme = multi_read_df_from_paths(
-        list(companies_files[companies_files["market"] == "peapme"]["path"])
-    )
-    amsterdam_companies = dfs_to_companie(
-        dfs_amsterdam, db.prefix_to_market_id, default_mid=db.nasdaq_market_id
-    )
-    compA_companies = dfs_to_companie(
-        dfs_compA,
-        prefix_to_market_id=db.prefix_to_market_id,
-        default_mid=db.prefix_to_market_id["1rP"],
-    )
-    compB_companies = dfs_to_companie(
-        dfs_compB,
-        prefix_to_market_id=db.prefix_to_market_id,
-        default_mid=db.prefix_to_market_id["1rP"],
-    )
-    peapme_companies = dfs_to_companie(
-        dfs_peapme,
-        prefix_to_market_id=db.prefix_to_market_id,
-        default_mid=db.prefix_to_market_id["1rP"],
-        is_pea=True,
-    )
-    df_companies = [
-        amsterdam_companies,
-        compA_companies,
-        compB_companies,
-        peapme_companies,
+    print("Updating companies...")
+    if keep_first_last:
+        companies_files_first = files_infos_df.groupby(["market", "date"]).first()
+        companies_files_last = files_infos_df.groupby(["market", "date"]).last()
+        companies_files = pd.concat([companies_files_first, companies_files_last])
+        companies_files.reset_index(inplace=True)
+    else:
+        companies_files = files_infos_df
+        companies_files.reset_index(inplace=True)
+    companies_files_paths = [
+        list(companies_files[companies_files["market"] == "amsterdam"]["path"]),
+        list(companies_files[companies_files["market"] == "compA"]["path"]),
+        list(companies_files[companies_files["market"] == "compB"]["path"]),
+        list(companies_files[companies_files["market"] == "peapme"]["path"]),
     ]
-    df_companies = pd.concat(df_companies)
-    df_companies.sort_values(by="timestamp", inplace=True)
+    companies_default_mid = [
+        db.eurex_market_id,
+        db.prefix_to_market_id["1rP"],
+        db.prefix_to_market_id["1rP"],
+        db.prefix_to_market_id["1rP"],
+    ]
+    files_to_companies_partial = partial(
+        files_to_companies,
+        prefix_to_market_id=db.prefix_to_market_id,
+        num_thread=num_thread,
+    )
+    companies_default_mid = [
+        companies_default_mid[i]
+        for i, c in enumerate(companies_files_paths)
+        if len(c) > 0
+    ]
+    companies_files_paths = [c for c in companies_files_paths if len(c) > 0]
+    companies_list = []
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus) as executor:
+        companies_list = [
+            r
+            for r in executor.map(
+                files_to_companies_partial, companies_files_paths, companies_default_mid
+            )
+        ]
+    df_companies = pd.concat(companies_list)
+    df_companies = df_companies[~df_companies["symbol"].isin(existing_symbols)]
+    update_comanies_to_db(db, df_companies)
+
+
+def update_comanies_to_db(db: TimescaleStockMarketModel, df_companies: pd.DataFrame):
+    df_companies.sort_values(by="date", inplace=True)
     df_companies.drop_duplicates(inplace=True)
     df_companies.drop_duplicates(subset=["symbol"], keep="last", inplace=True)
-    df_companies.drop("timestamp", axis=1, inplace=True)
+    df_companies.drop("date", axis=1, inplace=True)
     df_companies.set_index("symbol", inplace=True)
     db.df_write(df_companies, "companies", commit=True)

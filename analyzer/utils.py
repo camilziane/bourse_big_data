@@ -8,7 +8,7 @@ from constant import DATA_PATH, DATA_PATH_SAMY, FILES_INFO_PATH
 from models import FileInfo
 
 
-def get_files_infos_windows_df(cache = False) -> pd.DataFrame:
+def get_files_infos_windows_df(cache=False) -> pd.DataFrame:
     def _get_files_infos_df():
         files_infos = []
 
@@ -42,10 +42,13 @@ def get_files_infos_windows_df(cache = False) -> pd.DataFrame:
         files_infos_df.sort_index(inplace=True)
         files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
         files_infos_df["date"] = files_infos_df.index.date  # type: ignore
-        files_infos_df["name"] = files_infos_df["path"].apply(lambda x: os.path.basename(x))
+        files_infos_df["name"] = files_infos_df["path"].apply(
+            lambda x: os.path.basename(x)
+        )
         files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
-    if cache: 
+
+    if cache:
         try:
             return pd.read_pickle(FILES_INFO_PATH)
         except:
@@ -53,7 +56,8 @@ def get_files_infos_windows_df(cache = False) -> pd.DataFrame:
     else:
         return _get_files_infos_df()
 
-def get_files_infos_df(cache = False) -> pd.DataFrame:
+
+def get_files_infos_df(cache=False) -> pd.DataFrame:
     def _get_files_infos_df():
         files_infos: list[FileInfo] = []
         for root, dirs, files in os.walk(DATA_PATH):
@@ -78,15 +82,20 @@ def get_files_infos_df(cache = False) -> pd.DataFrame:
             files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"])
         except Exception as e:
             # print("windows timestamp : ",  e)
-            files_infos_df["timestamp"] = pd.to_datetime(files_infos_df["timestamp"], format="%Y-%m-%d %H_%M_%S")
+            files_infos_df["timestamp"] = pd.to_datetime(
+                files_infos_df["timestamp"], format="%Y-%m-%d %H_%M_%S"
+            )
 
         files_infos_df.set_index("timestamp", inplace=True)
         files_infos_df.sort_index(inplace=True)
         files_infos_df["year_month"] = files_infos_df.index.to_period("M")  # type: ignore
         files_infos_df["date"] = files_infos_df.index.date  # type: ignore
-        files_infos_df["name"] = files_infos_df["path"].apply(lambda x: os.path.basename(x))
+        files_infos_df["name"] = files_infos_df["path"].apply(
+            lambda x: os.path.basename(x)
+        )
         files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
+
     if cache:
         try:
             return pd.read_pickle(FILES_INFO_PATH)
@@ -118,7 +127,7 @@ def read_file(path: str) -> pd.DataFrame:
     return df
 
 
-def multi_read_df_from_paths(
+def multi_read_df_from_paths_old(
     paths: list[str], read_function=read_file
 ) -> list[pd.DataFrame]:
     dfs = []
@@ -132,11 +141,38 @@ def multi_read_df_from_paths(
     return dfs
 
 
+def multi_read_df_from_paths(
+    paths: list[str],
+    num_thread: int 
+) -> pd.DataFrame:
+    with ThreadPoolExecutor(max_workers=num_thread) as executor:
+        dfs = {
+            " ".join(path.split(" ")[1:]).split(".")[0]: result
+            for path, result in zip(paths, executor.map(pd.read_pickle, paths))
+        }
+    df = pd.concat(dfs)
+    df.reset_index(level=1, drop=True, inplace=True)
+    df.index.rename("date", inplace=True)
+    df.index = pd.to_datetime(df.index)
+    df["last"] = (
+        df["last"]
+        .astype(str)
+        .str.replace(r"\((.*?)\)", "", regex=True)
+        .str.replace(" ", "")
+        .astype(float)
+    )
+    df["name"] = df["name"].astype(str)
+    df["symbol"] = df["symbol"].astype(str)
+    return df
+
 def timer_decorator(func):
     def wrapper(*args, **kwargs):
         start_time = time.time()
         result = func(*args, **kwargs)
         end_time = time.time()
-        print(f"Function {func.__name__} took {(end_time - start_time)} seconds to run.")
+        print(
+            f"Function {func.__name__} took {(end_time - start_time)} seconds to run."
+        )
         return result
+
     return wrapper
