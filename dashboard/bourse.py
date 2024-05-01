@@ -39,7 +39,7 @@ companies_options = [
     {"label": row["name"], "value":row["id"]} for _, row in companies.iterrows()
 ]
 companies_id_to_labels = {row["id"]: row["name"] for _, row in companies.iterrows()}
-
+    
 modal = dbc.Modal(
     [
         dbc.ModalHeader(dbc.ModalTitle("Adjust Chart Settings"), style={'color': 'white'}),
@@ -136,8 +136,7 @@ dbc.Row(
     className='mb-4',
     justify='between',
     style={'align-items': 'center'}  # Ce style aligne verticalement les éléments au centre de la colonne.
-)
-,
+),
        dbc.Row(
     [
         dbc.Col(dcc.Graph(
@@ -161,11 +160,62 @@ dbc.Row(
                dbc.Col(dbc.Table(id="table-container", style={'margin': 'auto', 'display': 'block'}))
             ]
         ),
+dbc.Row(
+    [
+        dbc.Col(
+            dcc.Graph(
+                id="graph-volatility",
+                style={'height': '80vh'},
+                config={
+                    'displayModeBar': False
+                },
+                figure={
+                    'layout': {
+                        'plot_bgcolor': '#1D1D22',
+                        'paper_bgcolor': '#1D1D22',
+                    }
+                }
+            )
+        )
+    ])
+,
         modal
     ],
     fluid=True
 )
+    
 
+@app.callback(
+    Output("graph-volatility", "figure"),
+    [
+        Input("companies-dropdown", "value"),
+        Input("my-date-picker-range", "start_date"),
+        Input("my-date-picker-range", "end_date"),
+    ],
+)
+
+def update_3D_graph(values, start_date, end_date):
+    if not values or not start_date or not end_date:
+        return go.Figure()
+    end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
+    fig = go.Figure()
+    df = pd.read_sql_query(
+        f"SELECT * FROM daystocks WHERE cid = {values[0]} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
+        engine,
+    )
+    fig.add_trace(go.Scatter3d(x= df['date'],y= df['close'],z= df['volume'],
+    mode='markers',
+    marker=dict(
+        size=10,
+        color=df['volume'],
+        colorscale='Viridis',
+        opacity=0.7
+    )
+))
+        
+    name = companies_id_to_labels.get(values[0], '')
+    fig.update_layout(title=f'{name} Volatility', scene=dict(xaxis_title='Date', yaxis_title='Close', zaxis_title='Volume'))
+    return fig
 
 def create_candlestick_trace(df, label):
     return go.Candlestick(
