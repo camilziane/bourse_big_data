@@ -34,6 +34,12 @@ app = dash.Dash(
 )  # , external_stylesheets=external_stylesheets)
 
 server = app.server
+
+markets = pd.read_sql_query("SELECT * FROM markets", engine)
+market_options = [{"label": row["name"], "value": row["id"]} for _, row in markets.iterrows()]
+
+
+
 companies = pd.read_sql_query("SELECT * FROM companies", engine)
 companies_options = [
     {"label": row["name"], "value":row["id"]} for _, row in companies.iterrows()
@@ -106,19 +112,30 @@ def toggle_modal(n1, n2, is_open):
     return is_open
 
 
-open_modal_button = dbc.Button("Settings 🛠️", id="open-settings", n_clicks=0)
+open_modal_button = dbc.Button("Settings 🛠️", id="open-settings", n_clicks=0, color="dark")
 
 app.layout = dbc.Container(    
     [
 dbc.Row(
     [
-        dbc.Col(open_modal_button, width={"size": 4, "offset": 0}),
+        dbc.Col(open_modal_button, width=2),
         dbc.Col(
             dcc.Dropdown(
-                companies_options, value=[4534], id="companies-dropdown", multi=True, className='custom-dropdown'
+                id="market-dropdown",
+                options=market_options,
+                multi=True,
+                placeholder="Select market(s)",
+                className='custom-dropdown'
             ),
-            width={"size": 4, "offset": 0},
-            style={'margin': 'auto', 'display': 'block' , 'color': 'black'}
+            width=2,
+            style={'margin': 'auto', 'color': 'black'}
+        ),
+        dbc.Col(
+            dcc.Dropdown(
+                companies_options, value=[4534], id="companies-dropdown", multi=True, placeholder="Select company(ies)", className='custom-dropdown'
+            ),
+            width=4,
+            style={'margin': 'auto', 'color': 'black'}
         ),
         dbc.Col(
             dcc.DatePickerRange(
@@ -128,15 +145,17 @@ dbc.Row(
                 initial_visible_month=date(2019, 1, 1),
                 start_date=date(2019, 1, 1),
                 end_date=date(2023, 12, 31),
+                # style={'float': 'right'},
             ),
-            width={"size": 4, "offset": 0},
-            style={'margin': 'auto', 'display': 'block', 'textAlign': 'left'}  # J'ai modifié ici pour aligner à gauche
+            width=4,
+            style={'text-align': 'right'}
         )
     ],
     className='mb-4',
     justify='between',
-    style={'align-items': 'center'}  # Ce style aligne verticalement les éléments au centre de la colonne.
+    style={'align-items': 'center'}  
 ),
+
        dbc.Row(
     [
         dbc.Col(dcc.Graph(
@@ -430,6 +449,36 @@ def update_table(values, start_date, end_date):
     ]
 )
 
+@app.callback(
+    Output("companies-dropdown", "options"),
+    [Input("market-dropdown", "value")]
+)
+def update_companies_options(selected_markets):
+    if not selected_markets:
+        return companies_options
+    else:
+        filtered_companies = companies[companies["mid"].isin(selected_markets)]
+        filtered_options = [
+            {"label": row["name"], "value": row["id"]} for _, row in filtered_companies.iterrows()
+        ]
+        return filtered_options
+
+
+# Je fais une fonction comme ca on aura plus qu'a changer APPLE par le Market PRINCIPAL, le but cest davoir une variabel apres
+@app.callback(
+    Output("market-dropdown", "value"),
+    [Input("companies-dropdown", "value")]
+)
+def update_initial_market(companies_dropdown_value):
+    if not companies_dropdown_value:
+        return []
+    else:
+        apple = companies[companies["name"] == "APPLE"]
+        if not apple.empty:
+            market_id = apple.iloc[0]["mid"]
+            return [market_id]
+        else:
+            return []
     
 if __name__ == "__main__":
     app.run(debug=True)
