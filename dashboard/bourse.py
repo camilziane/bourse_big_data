@@ -12,16 +12,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 import plotly.subplots as ms
 
-
-import plotly.io as pio
-
-pio.templates.default = "plotly_dark"
-
-
-# import ddep
-
-# external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-
 DATABASE_URI = (
     "timescaledb://ricou:monmdp@db:5432/bourse"
     if IS_DOCKER
@@ -66,7 +56,7 @@ def toggle_bollinger_window(switch_value):
 
 headerGraph = dbc.Row(
     [
-        dbc.Col(html.Div(id="title-chart"), width=4),
+        dbc.Col(html.Div(id="title-chart"), width=8),
         dbc.Col(
             dcc.DatePickerRange(
                 id="my-date-picker-range",
@@ -81,9 +71,9 @@ headerGraph = dbc.Row(
             style={"text-align": "right"},
         ),
     ],
-    className="mb-4",
     justify="between",
     style={"align-items": "center"},
+    class_name="p-4"
 )
 
 
@@ -153,9 +143,9 @@ end = dbc.Col(
             className="custom-dropdown",
         ),
     ],
+    id="companie-section",
     className="mb-4",
     width=2,
-    style={"backgroundColor": "#2E2E33", "align-items": "center"},
 )
 
 tab_companies = dbc.Row(
@@ -173,6 +163,7 @@ preference_settings = html.Div(
     [
         html.Div(
             [
+                dbc.Col(html.Img(src="assets/its.png", style={"width":'100%'}), width=8, class_name="my-4"),
                 dbc.Label("Preference Settings", className="h5"),
                 dbc.Form(
                     [
@@ -238,7 +229,7 @@ preference_settings = html.Div(
                     ]
                 ),
             ],
-            style={"margin-top": "70px", "margin-left": "10px"},
+            className="m-4"
         )
     ]
 )
@@ -247,17 +238,16 @@ app.layout = html.Div(
     [
         dbc.Row(
             [
-                dbc.Col(
-                    preference_settings, width=2, style={"backgroundColor": "#2E2E33"}
-                ),
+                dbc.Col(preference_settings, width=2),
                 dbc.Col(
                     html.Div([headerGraph, graph, tab_companies]),
                     width=8,
-                    style={"backgroundColor": "#1D1D22"},
+                    id="center-section"
                 ),
                 end,
             ],
             className="mb-3",
+            id="layout",
         )
     ]
 )
@@ -356,6 +346,28 @@ def update_companies_chart(
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
     )
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#444', zerolinecolor="#444")
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#444', zerolinecolor="#444")
+    fig.update_layout(xaxis_rangeslider_visible=False)
+    fig.update_layout(
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=[
+                    dict(count=1, label="1m", step="month", stepmode="todate"),
+                    dict(count=6, label="6m", step="month", stepmode="todate"),
+                    dict(count=1, label="YTD", step="year", stepmode="todate"),
+                    dict(step="all"),
+                ]
+            ),
+            type="date",
+        ),
+        dragmode="pan",
+        xaxis_rangeselector_font_color="white",
+        xaxis_rangeselector_activecolor="#2E2E33",
+        xaxis_rangeselector_bgcolor="#222",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+
     if not values:
         return fig
     if not start_date or not end_date:
@@ -429,24 +441,7 @@ def update_companies_chart(
         )
         fig.add_trace(create_volume_trace(df, label), row=2, col=1)
         fig.update_yaxes(title_text=f"Volume {label}", row=2, col=1)
-    fig.update_layout(
-        xaxis=dict(
-            rangeselector=dict(
-                buttons=[
-                    dict(count=1, label="1m", step="month", stepmode="todate"),
-                    dict(count=6, label="6m", step="month", stepmode="todate"),
-                    dict(count=1, label="YTD", step="year", stepmode="todate"),
-                    dict(step="all"),
-                ]
-            ),
-            type="date",
-        ), 
-        dragmode="pan",
-        xaxis_rangeselector_font_color="white",
-        xaxis_rangeselector_activecolor="#2E2E33",
-        xaxis_rangeselector_bgcolor="#1D1D22",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
+
     return fig
 
 
@@ -489,21 +484,28 @@ def update_table(values, start_date, end_date):
         page_current=0,
         sort_action="native",  # Enable sorting on all sortable columns
         page_size=10,
-        style_cell={
-            "textAlign": "left",
-            "color": "white",
-            "backgroundColor": "#1D1D22",
-            "width": "100px",
-            "minWidth": "100px",
-            "maxWidth": "100px",
-            "whiteSpace": "normal",
-            "border": "1px solid #2E2E33",
-        },
+        # style_cell={
+        #     "textAlign": "left",
+        #     "color": "white",
+        #     "backgroundColor": "#1D1D22",
+        #     "width": "100px",
+        #     "minWidth": "100px",
+        #     "maxWidth": "100px",
+        #     "whiteSpace": "normal",
+        #     "border": "1px solid #2E2E33",
+        # },
         style_header={
             "backgroundColor": "#2E2E33",
             "fontWeight": "bold",
             "color": "white",
         },
+        css=[
+            {
+                "selector": ".dash-spreadsheet-menu",
+                "rule": "position:absolute;bottom:-30px",
+            },  # move below table
+            {"selector": ".show-hide", "rule": "font-family:Impact"},  # change font
+        ],
         style_data_conditional=[
             {
                 "if": {"filter_query": '{color} eq "green"'},
