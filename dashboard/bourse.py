@@ -38,57 +38,11 @@ server = app.server
 markets = pd.read_sql_query("SELECT * FROM markets", engine)
 market_options = [{"label": row["name"], "value": row["id"]} for _, row in markets.iterrows()]
 
-
-
 companies = pd.read_sql_query("SELECT * FROM companies", engine)
 companies_options = [
     {"label": row["name"], "value":row["id"]} for _, row in companies.iterrows()
 ]
 companies_id_to_labels = {row["id"]: row["name"] for _, row in companies.iterrows()}
-    
-modal = dbc.Modal(
-    [
-        dbc.ModalHeader(dbc.ModalTitle("Adjust Chart Settings"), style={'color': 'white'}),
-        dbc.ModalBody(
-            dbc.Form([
-                dbc.Switch(id="switch-log", label="Logarithmic", value=False, style={'color': 'white'}),
-                dbc.Switch(id="switch-volume", label="Volume", value=False, style={'color': 'white'}),
-                dbc.Switch(id="switch-bollinger-bands", label="Bollinger Bands", value=False, style={'color': 'white'}),
-                html.Div(
-                    [
-                        dbc.Label("Bollinger Bands Window Size:", style={'color': 'white'}),
-                        dbc.Input(type="number", id="bollinger-window", min=1, step=1, value=20, disabled=True)
-                    ],
-                    id="bollinger-window-container",
-                    style={'display': 'none'} 
-                ),
-                html.Div(
-                    [
-                        dbc.Label("Select Chart Type:", style={'color': 'white'}),
-                        dbc.RadioItems(
-                            options=[
-                                {'label': 'Candle Stick', 'value': 'Candle Stick'},
-                                {'label': 'Line', 'value': 'Line'}
-                            ],
-                            value='Line',  
-                            id='chart-type',
-                            inline=True,
-                            switch=True,
-                            style={'color': 'white'},
-                            className="mt-2" 
-                        ),
-                    ],
-                    className='mt-3' 
-                )
-            ])
-        ),
-        dbc.ModalFooter(
-            dbc.Button("Close", id="close-modal", className="ms-auto", n_clicks=0)
-        ),
-    ],
-    id="modal-settings",
-    is_open=False
-)
 
 @app.callback(
     [Output("bollinger-window-container", "style"),
@@ -100,24 +54,11 @@ def toggle_bollinger_window(switch_value):
         return {'display': 'block'}, False 
     else:
         return {'display': 'none'}, True 
-
-@app.callback(
-    Output("modal-settings", "is_open"),
-    [Input("open-settings", "n_clicks"), Input("close-modal", "n_clicks")],
-    [State("modal-settings", "is_open")]
-)
-def toggle_modal(n1, n2, is_open):
-    if n1 or n2:
-        return not is_open
-    return is_open
-
-
-open_modal_button = dbc.Button("Settings 🛠️", id="open-settings", n_clicks=0, color="dark")
-
+    
+    
 headerGraph = dbc.Row(
     [
-        dbc.Col(html.Div("LA BOURSE"), width=4),
-        # dbc.Col(html.Div("Start"), width=2),
+        dbc.Col(html.Div(id='title-chart'), width=4),
         dbc.Col(
             dcc.DatePickerRange(
                 id="my-date-picker-range",
@@ -137,7 +78,30 @@ headerGraph = dbc.Row(
     style={'align-items': 'center'}  
 )
 
-graph =        dbc.Row(
+@app.callback(
+    Output('title-chart', 'children'),
+    [
+        Input("companies-dropdown", "value"),
+        Input("market-dropdown", "value"),
+    ]
+)
+def update_title_chart(
+    companies_dropdown_value: Optional[list[int]],
+    market_dropdown_value: Optional[list[int]],
+):
+    if not companies_dropdown_value:
+        return f''
+    if not market_dropdown_value:
+        return f''
+    
+    market =  pd.read_sql_query(f"SELECT * FROM markets WHERE id = {market_dropdown_value[0]}", engine)
+    companies = pd.read_sql_query(f"SELECT * FROM companies WHERE id = {companies_dropdown_value[0]}", engine)
+    symbol = companies.symbol.iloc[0]
+    name = companies.name.iloc[0]
+    market_name = market.name.iloc[0]
+    return f'{market_name} - {symbol} ({name})'
+
+graph = dbc.Row(
     [
         dbc.Col(dcc.Graph(
     id="graph", 
@@ -173,7 +137,8 @@ end = dbc.Col(
         ),
     ],
     className='mb-4',
-    style={'align-items': 'center'}  
+    width=2,
+   style={'backgroundColor': '#2E2E33' , 'align-items': 'center'}
 )
 
 tab_companies =  dbc.Row(
@@ -182,12 +147,55 @@ tab_companies =  dbc.Row(
             ]
         )
 
+
+preference_settings = html.Div(
+    [
+        html.Div(
+            [
+                dbc.Label("Preference Settings", className="h5"),
+                dbc.Form([
+                        dbc.Switch(id="switch-log", label="Logarithmic", value=False, style={'color': 'white'}),
+                        dbc.Switch(id="switch-volume", label="Volume", value=False, style={'color': 'white'}),
+                        dbc.Switch(id="switch-bollinger-bands", label="Bollinger Bands", value=False, style={'color': 'white'}),
+                        html.Div(
+                            [
+                                dbc.Label("Bollinger Bands Window Size:", style={'color': 'white'}),
+                                dbc.Input(type="number", id="bollinger-window", min=1, step=1, value=20, disabled=True)
+                            ],
+                            id="bollinger-window-container",
+                            style={'display': 'none'} 
+                        ),
+                        html.Div(
+                            [
+                                dbc.Label("Select Chart Type:", style={'color': 'white'}),
+                                dbc.RadioItems(
+                                    options=[
+                                        {'label': 'Candle Stick', 'value': 'Candle Stick'},
+                                        {'label': 'Line', 'value': 'Line'}
+                                    ],
+                                    value='Line',  
+                                    id='chart-type',
+                                    inline=True,
+                                    switch=True,
+                                    style={'color': 'white'},
+                                    className="mt-2" 
+                                ),
+                            ],
+                            className='mt-3' 
+                        )
+                    ])
+            ],
+            style={'margin-top':'70px', 'margin-left':'10px'}
+        )
+    ]
+)
+
 app.layout = html.Div(
     [
         dbc.Row(
             [
-                dbc.Col(html.Div("Start"), width=2),
-                dbc.Col(html.Div([headerGraph, graph,tab_companies ]), width=8),
+                dbc.Col(preference_settings, width=2, style={'backgroundColor': '#2E2E33'}),                
+                dbc.Col(html.Div([headerGraph, graph,tab_companies ]), width=8 ,style={'backgroundColor': '#1D1D22'}),
                 end
             ],
             className="mb-3",
@@ -251,22 +259,22 @@ def create_volume_trace(df, label):
         Input("companies-dropdown", "value"),
         Input("my-date-picker-range", "start_date"),
         Input("my-date-picker-range", "end_date"),
-        # Input("chart-type", "value"),
-        # Input("switch-log", "value"), 
-        # Input("switch-volume", "value"), 
-        # Input("switch-bollinger-bands", "value"),
-        # Input("bollinger-window", "value")
+        Input("chart-type", "value"),
+        Input("switch-log", "value"), 
+        Input("switch-volume", "value"), 
+        Input("switch-bollinger-bands", "value"),
+        Input("bollinger-window", "value")
     ]
 )
 def update_companies_chart(
     values: Optional[list[int]],
     start_date: Optional[str],
     end_date: Optional[str],
+    chart_type: str = 'Line',
     log_y: bool = False,
     volume: bool = False,
     bollinger_bands: bool = False,
     bollinger_window: Optional[int] = None,
-    chart_type: str = 'Line'
 ):
     
     if volume:
@@ -281,7 +289,6 @@ def update_companies_chart(
         return go.Figure()
     end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
     if chart_type == 'Candle Stick':
-        
         for i,value in enumerate(values):
             label = companies_id_to_labels.get(value, '')
             
