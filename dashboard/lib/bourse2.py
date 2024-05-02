@@ -30,7 +30,7 @@ DATABASE_URI = (
 engine = sqlalchemy.create_engine(DATABASE_URI)
 
 app = dash.Dash(
-    __name__, title="Bourse", suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.DARKLY, dbc.themes.GRID]
+    __name__, title="Bourse", suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.DARKLY]
 )  # , external_stylesheets=external_stylesheets)
 
 server = app.server
@@ -114,10 +114,29 @@ def toggle_modal(n1, n2, is_open):
 
 open_modal_button = dbc.Button("Settings 🛠️", id="open-settings", n_clicks=0, color="dark")
 
-headerGraph = dbc.Row(
+app.layout = dbc.Container(    
     [
-        dbc.Col(html.Div("LA BOURSE"), width=4),
-        # dbc.Col(html.Div("Start"), width=2),
+dbc.Row(
+    [
+        dbc.Col(open_modal_button, width=2),
+        dbc.Col(
+            dcc.Dropdown(
+                id="market-dropdown",
+                options=market_options,
+                multi=True,
+                placeholder="Select market(s)",
+                className='custom-dropdown'
+            ),
+            width=2,
+            style={'margin': 'auto', 'color': 'black'}
+        ),
+        dbc.Col(
+            dcc.Dropdown(
+                companies_options, value=[4534], id="companies-dropdown", multi=True, placeholder="Select company(ies)", className='custom-dropdown'
+            ),
+            width=4,
+            style={'margin': 'auto', 'color': 'black'}
+        ),
         dbc.Col(
             dcc.DatePickerRange(
                 id="my-date-picker-range",
@@ -135,9 +154,9 @@ headerGraph = dbc.Row(
     className='mb-4',
     justify='between',
     style={'align-items': 'center'}  
-)
+),
 
-graph =        dbc.Row(
+       dbc.Row(
     [
         dbc.Col(dcc.Graph(
     id="graph", 
@@ -154,47 +173,51 @@ graph =        dbc.Row(
 ))
     ]
 )
-end = dbc.Col(
-    [
-        dcc.Dropdown(
-            id="market-dropdown",
-            options=market_options,
-            multi=True,
-            placeholder="Select market(s)",
-            className='custom-dropdown'
-        ),
-        dcc.Dropdown(
-            options=companies_options, 
-            value=[4534], 
-            id="companies-dropdown", 
-            multi=True, 
-            placeholder="Select company(ies)", 
-            className='custom-dropdown'
-        ),
-    ],
-    className='mb-4',
-    style={'align-items': 'center'}  
-)
-
-tab_companies =  dbc.Row(
+,
+        dbc.Row(
             [
                dbc.Col(dbc.Table(id="table-container", style={'margin': 'auto', 'display': 'block'}))
             ]
-        )
+        ),
 
-app.layout = html.Div(
+,
+        modal
+    ],
+    fluid=True
+)
+    
+
+@app.callback(
+    Output("graph-volatility", "figure"),
     [
-        dbc.Row(
-            [
-                dbc.Col(html.Div("Start"), width=2),
-                dbc.Col(html.Div([headerGraph, graph,tab_companies ]), width=8),
-                end
-            ],
-            className="mb-3",
-        )
-    ]
+        Input("companies-dropdown", "value"),
+        Input("my-date-picker-range", "start_date"),
+        Input("my-date-picker-range", "end_date"),
+    ],
 )
 
+def update_3D_graph(values, start_date, end_date):
+    if not values or not start_date or not end_date:
+        return go.Figure()
+    end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
+    fig = go.Figure()
+    df = pd.read_sql_query(
+        f"SELECT * FROM daystocks WHERE cid = {values[0]} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
+        engine,
+    )
+    fig.add_trace(go.Scatter3d(x= df['date'],y= df['close'],z= df['volume'],
+    mode='markers',
+    marker=dict(
+        size=10,
+        color=df['volume'],
+        colorscale='Viridis',
+        opacity=0.7
+    )
+))
+        
+    name = companies_id_to_labels.get(values[0], '')
+    fig.update_layout(title=f'{name} Volatility', scene=dict(xaxis_title='Date', yaxis_title='Close', zaxis_title='Volume'))
+    return fig
 
 def create_candlestick_trace(df, label):
     return go.Candlestick(
@@ -251,22 +274,22 @@ def create_volume_trace(df, label):
         Input("companies-dropdown", "value"),
         Input("my-date-picker-range", "start_date"),
         Input("my-date-picker-range", "end_date"),
-        # Input("chart-type", "value"),
-        # Input("switch-log", "value"), 
-        # Input("switch-volume", "value"), 
-        # Input("switch-bollinger-bands", "value"),
-        # Input("bollinger-window", "value")
+        Input("chart-type", "value"),
+        Input("switch-log", "value"), 
+        Input("switch-volume", "value"), 
+        Input("switch-bollinger-bands", "value"),
+        Input("bollinger-window", "value")
     ]
 )
 def update_companies_chart(
     values: Optional[list[int]],
     start_date: Optional[str],
     end_date: Optional[str],
-    log_y: bool = False,
-    volume: bool = False,
-    bollinger_bands: bool = False,
-    bollinger_window: Optional[int] = None,
-    chart_type: str = 'Line'
+    chart_type: str,
+    log_y: bool,
+    volume: bool,
+    bollinger_bands: bool,
+    bollinger_window: Optional[int]
 ):
     
     if volume:
@@ -439,6 +462,6 @@ def update_initial_market(companies_dropdown_value):
             return [market_id]
         else:
             return []
-     
+    
 if __name__ == "__main__":
     app.run(debug=True)
