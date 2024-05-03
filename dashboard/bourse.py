@@ -122,7 +122,6 @@ def update_selected_companies_output(selected_companies, selected_market):
     if selected_companies:
         return html.Div(
             [
-                html.Label("", style={"color": "white"}),
                 html.Ul(
                     [
                         html.Li(
@@ -141,7 +140,6 @@ def update_selected_companies_output(selected_companies, selected_market):
         market_companies = market_companies[:20] #pour pas saturer le site
         return html.Div(
             [
-                html.Label("", style={"color": "white"}),
                 html.Ul(
                     [
                         html.Li(
@@ -247,6 +245,7 @@ graph = dbc.Row(
 
 end = dbc.Col(
     [
+        html.Div(style={"padding": "2px"}), #faut automatiser le padding
         dcc.Dropdown(
             id="market-dropdown",
             options=market_options,
@@ -256,6 +255,7 @@ end = dbc.Col(
             className="custom-dropdown",
             style={"color": "black"}
         ),
+        html.Div(style={"padding": "2px"}), #faut automatiser le padding
         dcc.Dropdown(
             options=companies_options,
             value=[4534],
@@ -265,6 +265,7 @@ end = dbc.Col(
             className="custom-dropdown",
             style={"color": "black"}
         ),
+        html.Div(style={"padding": "10px"}), #faut automatiser le padding
         html.Div(id="selected-companies-output")
     ],
     className="mb-4",
