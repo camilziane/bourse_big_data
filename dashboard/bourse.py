@@ -163,7 +163,17 @@ preference_settings = html.Div(
     [
         html.Div(
             [
-                dbc.Col(html.Img(src="assets/its.png", style={"width":'100%'}), width=8, class_name="my-4"),
+                html.Div(
+                    dcc.Link(
+                        dbc.Col(
+                            html.Img(src="assets/its.png", style={"width":'100%'}), 
+                            width=8, 
+                            class_name="my-4"
+                        ),
+                        href="#"
+                    ),
+                    id="open"
+                ),
                 dbc.Label("Preference Settings", className="h5"),
                 dbc.Form(
                     [
@@ -225,8 +235,7 @@ preference_settings = html.Div(
                                 ),
                             ],
                             className="mt-3",
-                        ),
-                    ]
+                        ),                 ]
                 ),
             ],
             className="m-4"
@@ -234,8 +243,26 @@ preference_settings = html.Div(
     ]
 )
 
+@app.callback(
+    Output("modal", "is_open"),
+    [Input("open", "n_clicks")],
+    [State("modal", "is_open")],
+)
+def toggle_modal(n, is_open):
+    if n:
+        return not is_open
+    return is_open
+
 app.layout = html.Div(
     [
+        dbc.Modal(
+            [
+                dbc.ModalBody(
+                    html.Img(src="/assets/saul_anim.gif", style={"width":'100%'})
+                ),
+            ],
+            id="modal",
+        ),
         dbc.Row(
             [
                 dbc.Col(preference_settings, width=2),
