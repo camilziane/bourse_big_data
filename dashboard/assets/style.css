@@ -252,3 +252,37 @@ background: var(--bs-gray-900)  !important;
 color: white;
 border-style: none !important ;  
 } */
+
+.Select-control {
+  background-color: rgb(25, 25, 25) !important;
+  color: white;
+  border-color: rgb(105, 105, 105) !important;
+}
+
+.Select-menu-outer {
+  background-color: rgb(25, 25, 25);
+  color: rgb(25, 25, 25); 
+}
+
+.Select-value-label {
+  color: white !important;  
+}
+
+.Select-value {
+  border-color: rgb(105, 105, 105) !important;
+  background-color: rgb(25, 25, 25) !important;
+}
+
+.Select-value-icon {
+  color: white !important;
+  background-color: rgb(25, 25, 25) !important;
+}
+
+.Select-value:hover {
+  background-color: rgb(55, 55, 55) !important;
+  border-color: rgb(105, 105, 105) !important;
+}
+
+.Select-value-icon svg path {
+  fill: white !important;
+}
