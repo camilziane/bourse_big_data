@@ -620,10 +620,13 @@ def update_table(selected_companies, start_date, end_date):
             f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
             engine,
         )
+        # convertir la colonne 'date' en datetime (ne pas faire .strftime() sur la colonne 'date' si on est pas sur que cest une datetime)
+        df["date"] = pd.to_datetime(df["date"])
+
+        df["date"] = df["date"].dt.strftime("%Y-%m-%d")
         df["cid"] = label
         dfs.append(df)
     df = pd.concat(dfs)
-    df["date"] = df["date"].dt.strftime("%Y-%m-%d")
 
     df.rename(columns={"cid": "name"}, inplace=True)
 
