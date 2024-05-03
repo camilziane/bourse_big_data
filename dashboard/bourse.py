@@ -1,6 +1,6 @@
 import dash
 import dash.dependencies as dde
-from dash import html, dcc, dash_table, Input, Output, html, no_update
+from dash import html, dcc, dash_table, Input, Output, html, no_update, ALL
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import pandas as pd
@@ -38,7 +38,12 @@ companies_options = [
     {"label": row["name"], "value": row["id"]} for _, row in companies.iterrows()
 ]
 companies_id_to_labels = {row["id"]: row["name"] for _, row in companies.iterrows()}
-
+the_selected_companies = [
+    #APPLE
+    4534,
+    #EURONEXPARIS
+    #4588,
+    ]
 
 @app.callback(
     [
@@ -84,25 +89,141 @@ headerGraph = dbc.Row(
         Input("market-dropdown", "value"),
     ],
 )
-def update_title_chart(
-    companies_dropdown_value: Optional[list[int]],
-    market_dropdown_value: Optional[list[int]],
-):
-    if not companies_dropdown_value:
-        return f""
-    if not market_dropdown_value:
-        return f""
+def update_title_chart(companies_dropdown_value, market_dropdown_value):
+    global the_selected_companies
+
+    if not the_selected_companies:
+        return ""
+
+    company_id = the_selected_companies[0]
 
     market = pd.read_sql_query(
-        f"SELECT * FROM markets WHERE id = {market_dropdown_value[0]}", engine
+        f"SELECT * FROM markets WHERE id = (SELECT mid FROM companies WHERE id = {company_id})", engine
     )
-    companies = pd.read_sql_query(
-        f"SELECT * FROM companies WHERE id = {companies_dropdown_value[0]}", engine
+
+    company = pd.read_sql_query(
+        f"SELECT * FROM companies WHERE id = {company_id}", engine
     )
-    symbol = companies.symbol.iloc[0]
-    name = companies.name.iloc[0]
+
+    symbol = company.symbol.iloc[0]
+    name = company.name.iloc[0]
     market_name = market.name.iloc[0]
+
     return f"{market_name} - {symbol} ({name})"
+
+
+
+@app.callback(
+    Output("selected-companies-output", "children"),
+    [Input("companies-dropdown", "value"),
+     Input("market-dropdown", "value")]
+)
+def update_selected_companies_output(selected_companies, selected_market):
+    if selected_companies:
+        return html.Div(
+            [
+                html.Label("", style={"color": "white"}),
+                html.Ul(
+                    [
+                        html.Li(
+                            companies_id_to_labels.get(company_id, ""),
+                            id={"type": "company", "index": i},
+                            style={"color": "white", "cursor": "pointer"},
+                            n_clicks=0
+                        )
+                        for i, company_id in enumerate(selected_companies)
+                    ]
+                )
+            ]
+        )
+    elif selected_market:
+        market_companies = companies[companies["mid"].isin(selected_market)]
+        market_companies = market_companies[:20] #pour pas saturer le site
+        return html.Div(
+            [
+                html.Label("", style={"color": "white"}),
+                html.Ul(
+                    [
+                        html.Li(
+                            row["name"],
+                            id={"type": "company", "index": i},
+                            style={"color": "white", "cursor": "pointer"},
+                            n_clicks=0
+                        )
+                        for i, (_, row) in enumerate(market_companies.iterrows())
+                    ]
+                )
+            ]
+        )
+    else:
+        return html.Div()
+
+
+
+@app.callback(
+    Output("companies-dropdown", "value"),
+    [Input({"type": "company", "index": ALL}, "n_clicks")],
+    [Input("market-dropdown", "value")],
+    [State("companies-dropdown", "value")]
+)
+def move_company_to_top(n_clicks, selected_markets, selected_companies):
+    global the_selected_companies
+    isMarket = selected_markets and not selected_companies #dans le cas ou toute les companies du market selectionné sont afficehr
+    if n_clicks is None:
+        raise dash.exceptions.PreventUpdate
+    
+    if any(n_clicks):
+        clicked_company_index = n_clicks.index(1)
+        if len(selected_companies) > clicked_company_index and selected_companies[clicked_company_index]:
+            companie = selected_companies[clicked_company_index]
+        else:
+            filtered_companies = companies[companies["mid"].isin(selected_markets)]
+            new_selected_companies = [
+                {"label": row["name"], "value": row["id"]}
+                for _, row in filtered_companies.iterrows()
+            ]
+            new_selected_companies = new_selected_companies[:20] # pour ne pas saturer le site
+            companie = new_selected_companies[clicked_company_index]
+        
+        if isMarket:
+            if companie["value"] in the_selected_companies: #Si la company est deja en premiere position Ou si la company na que 1 company principal, on la remplace
+                the_selected_companies.remove(companie["value"])
+                the_selected_companies.insert(0, companie["value"])
+            else:
+                 if (len(the_selected_companies) == 1):
+                     the_selected_companies = [companie["value"]]
+                 #else:
+                     #the_selected_companies.insert(0, companie["value"])
+        else:
+            # Remove the company from the list and insert it at the top
+            if companie in the_selected_companies: #Si la company est deja en premiere position Ou si la company na que 1 company principal, on la remplace
+                the_selected_companies.remove(companie)
+                the_selected_companies.insert(0, companie)
+            else:
+                 if (len(the_selected_companies) == 1):
+                     the_selected_companies = [companie]
+                 #else:
+                 #the_selected_companies.insert(0, companie)
+        
+        
+    return selected_companies
+
+
+@app.callback(
+    Output({"type": "company", "index": ALL}, "style"),
+    [Input({"type": "company", "index": ALL}, "n_clicks")],
+    [State({"type": "company", "index": ALL}, "id")]
+)
+def update_company_highlight(n_clicks, company_ids):
+    if n_clicks is None:
+        raise dash.exceptions.PreventUpdate
+    
+    style_list = [{"color": "white", "cursor": "pointer"} for _ in range(len(n_clicks))]
+    if any(n_clicks):
+        clicked_company_index = n_clicks.index(1)
+        style_list[clicked_company_index] = {"color": "red", "cursor": "pointer"}
+        
+    return style_list
 
 
 graph = dbc.Row(
@@ -124,15 +245,16 @@ graph = dbc.Row(
     ]
 )
 
-
 end = dbc.Col(
     [
         dcc.Dropdown(
             id="market-dropdown",
             options=market_options,
+            value=[14],
             multi=True,
             placeholder="Select market(s)",
             className="custom-dropdown",
+            style={"color": "black"}
         ),
         dcc.Dropdown(
             options=companies_options,
@@ -141,11 +263,13 @@ end = dbc.Col(
             multi=True,
             placeholder="Select company(ies)",
             className="custom-dropdown",
+            style={"color": "black"}
         ),
+        html.Div(id="selected-companies-output")
     ],
-    id="companie-section",
     className="mb-4",
     width=2,
+    style={"backgroundColor": "#2E2E33", "align-items": "center"},
 )
 
 tab_companies = dbc.Row(
@@ -395,13 +519,13 @@ def update_companies_chart(
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
 
-    if not values:
+    if not the_selected_companies:
         return fig
     if not start_date or not end_date:
         return fig
     end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
     if chart_type == "Candle Stick":
-        for i, value in enumerate(values):
+        for i, value in enumerate(the_selected_companies):
             label = companies_id_to_labels.get(value, "")
 
             df = pd.read_sql_query(
@@ -432,7 +556,7 @@ def update_companies_chart(
                 fig.add_trace(average_trace)
 
     else:
-        for i, value in enumerate(values):
+        for i, value in enumerate(the_selected_companies):
             label = companies_id_to_labels.get(value, "")
             df = pd.read_sql_query(
                 f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
@@ -460,7 +584,7 @@ def update_companies_chart(
         fig.update_yaxes(type="log")
 
     if volume:
-        value = values[0]
+        value = the_selected_companies[0]
         label = companies_id_to_labels.get(value, "")
         df = pd.read_sql_query(
             f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
@@ -480,15 +604,16 @@ def update_companies_chart(
         Input("my-date-picker-range", "end_date"),
     ],
 )
-def update_table(values, start_date, end_date):
-    if not values or not start_date or not end_date:
+
+def update_table(selected_companies, start_date, end_date):
+    if not the_selected_companies or not start_date or not end_date:
         return html.Table()
 
     dfs = []
 
     end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
 
-    for i, value in enumerate(values):
+    for i, value in enumerate(the_selected_companies):
         label = companies_id_to_labels.get(value, "")
         df = pd.read_sql_query(
             f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
@@ -561,22 +686,6 @@ def update_companies_options(selected_markets):
             for _, row in filtered_companies.iterrows()
         ]
         return filtered_options
-
-
-# Je fais une fonction comme ca on aura plus qu'a changer APPLE par le Market PRINCIPAL, le but cest davoir une variabel apres
-@app.callback(
-    Output("market-dropdown", "value"), [Input("companies-dropdown", "value")]
-)
-def update_initial_market(companies_dropdown_value):
-    if not companies_dropdown_value:
-        return []
-    else:
-        apple = companies[companies["name"] == "APPLE"]
-        if not apple.empty:
-            market_id = apple.iloc[0]["mid"]
-            return [market_id]
-        else:
-            return []
 
 
 if __name__ == "__main__":
