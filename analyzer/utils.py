@@ -93,7 +93,7 @@ def get_files_infos_df(cache=False) -> pd.DataFrame:
         files_infos_df["name"] = files_infos_df["path"].apply(
             lambda x: os.path.basename(x)
         )
-        files_infos_df.to_pickle(FILES_INFO_PATH)
+        #files_infos_df.to_pickle(FILES_INFO_PATH)
         return files_infos_df
 
     if cache:

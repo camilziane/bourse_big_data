@@ -191,7 +191,7 @@ def update_timescale_db(
             num_thread=num_threads,
         )
         # process_date_group_partial(date_groups[0], index=[0])
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_cpus//2) as executor:
             executor.map(process_date_group_partial, date_groups, indexes)
     errors_dates = db.raw_query("SELECT * from error_dates")
     if len(errors_dates) > 0:
