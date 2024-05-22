@@ -143,6 +143,7 @@
 
 body {
   background-color: var(--bs-gray-900);
+  color: white !important;
 
 }
 
@@ -157,6 +158,20 @@ body {
 
 #table td {
   background-color: var(--bs-gray-900);
+  /* replace with the color you want */
+
+}
+
+
+#tbl {
+  background-color: var(--bs-gray-900);
+  /* color: white !important; */
+
+}
+
+#tbl td {
+  background-color: var(--bs-gray-900);
+  /* color: white !important; */
   /* replace with the color you want */
 
 }
@@ -254,14 +269,14 @@ border-style: none !important ;
 } */
 
 .Select-control {
-  background-color: rgb(25, 25, 25) !important;
+  background-color: transparent !important;
   color: white;
   border-color: rgb(105, 105, 105) !important;
 }
 
 .Select-menu-outer {
-  background-color: rgb(25, 25, 25);
-  color: rgb(25, 25, 25); 
+  background-color: var(--bs-gray-900) !important;
+  color: white !important; 
 }
 
 .Select-value-label {
@@ -269,13 +284,14 @@ border-style: none !important ;
 }
 
 .Select-value {
-  border-color: rgb(105, 105, 105) !important;
-  background-color: rgb(25, 25, 25) !important;
+  border-color:var(--bs-gray-700) !important;
+  background-color: transparent !important;
 }
 
 .Select-value-icon {
   color: white !important;
-  background-color: rgb(25, 25, 25) !important;
+  border: 0px solid grey !important;
+  background-color:  transparent !important;
 }
 
 .Select-value:hover {
@@ -285,4 +301,16 @@ border-style: none !important ;
 
 .Select-value-icon svg path {
   fill: white !important;
+}
+
+.svg {
+  color: white !important;  
+}
+
+
+.VirtualizedSelectFocusedOption {
+    background-color: var(--bs-gray-800) !important;
+    /* opacity: .7; */
+    border: 0px solid grey;
+    border-radius: 0px;
 }

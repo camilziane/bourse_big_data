@@ -1,4 +1,5 @@
 import dash
+from dash.dash_table.Format import Format, Scheme
 import dash.dependencies as dde
 from dash import html, dcc, dash_table, Input, Output, html, no_update, ALL
 from dash.dependencies import Input, Output, State
@@ -23,7 +24,7 @@ app = dash.Dash(
     __name__,
     title="Bourse",
     suppress_callback_exceptions=True,
-    external_stylesheets=[dbc.themes.DARKLY, dbc.themes.GRID],
+    external_stylesheets=[dbc.themes.ZEPHYR, dbc.themes.GRID],
 )  # , external_stylesheets=external_stylesheets)
 
 server = app.server
@@ -39,11 +40,12 @@ companies_options = [
 ]
 companies_id_to_labels = {row["id"]: row["name"] for _, row in companies.iterrows()}
 the_selected_companies = [
-    #APPLE
-    4534,
-    #EURONEXPARIS
-    #4588,
-    ]
+    # APPLE
+    # 4534,
+    # EURONEXPARIS
+    # 4588,
+]
+
 
 @app.callback(
     [
@@ -78,7 +80,7 @@ headerGraph = dbc.Row(
     ],
     justify="between",
     style={"align-items": "center"},
-    class_name="p-4"
+    class_name="p-4",
 )
 
 
@@ -98,7 +100,8 @@ def update_title_chart(companies_dropdown_value, market_dropdown_value):
     company_id = the_selected_companies[0]
 
     market = pd.read_sql_query(
-        f"SELECT * FROM markets WHERE id = (SELECT mid FROM companies WHERE id = {company_id})", engine
+        f"SELECT * FROM markets WHERE id = (SELECT mid FROM companies WHERE id = {company_id})",
+        engine,
     )
 
     company = pd.read_sql_query(
@@ -112,115 +115,171 @@ def update_title_chart(companies_dropdown_value, market_dropdown_value):
     return f"{market_name} - {symbol} ({name})"
 
 
-
 @app.callback(
     Output("selected-companies-output", "children"),
-    [Input("companies-dropdown", "value"),
-     Input("market-dropdown", "value")]
+    [
+        Input("companies-dropdown", "value"),
+        Input("market-dropdown", "value"),
+        Input("my-date-picker-range", "start_date"),
+        Input("my-date-picker-range", "end_date"),
+    ],
 )
-def update_selected_companies_output(selected_companies, selected_market):
-    if selected_companies:
-        return html.Div(
-            [
-                html.Ul(
-                    [
-                        html.Li(
-                            companies_id_to_labels.get(company_id, ""),
-                            id={"type": "company", "index": i},
-                            style={"color": "white", "cursor": "pointer"},
-                            n_clicks=0
-                        )
-                        for i, company_id in enumerate(selected_companies)
-                    ]
-                )
-            ]
-        )
-    elif selected_market:
-        market_companies = companies[companies["mid"].isin(selected_market)]
-        market_companies = market_companies[:20] #pour pas saturer le site
-        return html.Div(
-            [
-                html.Ul(
-                    [
-                        html.Li(
-                            row["name"],
-                            id={"type": "company", "index": i},
-                            style={"color": "white", "cursor": "pointer"},
-                            n_clicks=0
-                        )
-                        for i, (_, row) in enumerate(market_companies.iterrows())
-                    ]
-                )
-            ]
-        )
-    else:
-        return html.Div()
+def update_selected_companies_output(
+    selected_companies, selected_market, start_date, end_date
+):
+    filtered_companies = companies[
+        (companies["id"].isin(selected_companies))
+        & (companies["mid"].isin(selected_market))
+    ]
+    if len(selected_market) == 0:
+        filtered_companies = companies[(companies["id"].isin(selected_companies))]
+    if len(selected_companies) == 0:
+        filtered_companies = companies[companies["mid"].isin(selected_market)]
 
+    if len(filtered_companies) == 0:
+        return html.Div("No companies selected", style={"text-align": "center", "color": "gray"}, className="mt-4")
+    company_ids = filtered_companies["id"].tolist()
+    columns = [
+        {"name": "name", "id": "name"},
+    ]
+    if len(selected_companies) > 0:
+        stock_data = get_stock_data(engine, start_date, end_date, company_ids)
+        print("stock_data1: ", stock_data)
+        stock_data = calculate_price_change_percentage(stock_data)
+        print("stock_data2: ", stock_data)
+        columns = [
+            {"name": "name", "id": "name"},
+            {
+                "name": "perc %",
+                "id": "price_change_percentage",
+                "type": "numeric",
+                "format": {
+                    "specifier": "$,.1f",
+                    "locale": {"symbol": ["", "%"]},
+                },
+            },
+        ]
+
+    # Fusionner les données des actions avec les informations des entreprises
+    merged_data = (
+        filtered_companies.merge(stock_data, left_on="id", right_on="cid", how="inner")
+        if len(selected_companies) > 0
+        else filtered_companies
+    )
+    print("merged_data: ", merged_data)
+
+    return dash_table.DataTable(
+        id="tbl",
+        hidden_columns=["color"],
+        data=merged_data.to_dict("records"),
+        columns=columns,
+        page_current=0,
+        sort_action="native",
+        page_size=20,
+        style_cell={
+            "color": "white",
+    
+        },
+        style_header={
+            "backgroundColor": "#2E2E33",
+            "fontWeight": "bold",
+            "color": "white",
+        },
+        css=[
+            {
+                "selector": ".dash-spreadsheet-menu",
+                "rule": "position:absolute;bottom:-30px",
+            },
+            {"selector": ".show-hide", "rule": "font-family:Impact"},
+        ],
+        style_data_conditional=[
+            {
+                "if": {"filter_query": "{price_change_percentage} > 0"},
+                "column_id": "price_change_percentage",
+                "color": "#47BB78",
+            },
+            {
+                "if": {"filter_query": "{price_change_percentage} < 0"},
+                "column_id": "price_change_percentage",
+                "color": "#F56565",
+            },
+
+
+        ],
+    )
+
+
+# BETWEEN au lieu de IN pour avoir le last et first
+def get_stock_data(engine, start_date, end_date, company_ids):
+    query = f"""
+    WITH min_max_dates AS (
+    SELECT 
+        cid, 
+        MIN("date") AS min_date, 
+        MAX("date") AS max_date
+    FROM 
+        daystocks
+    WHERE 
+        "date" BETWEEN '{start_date}' AND '{end_date}'
+        AND cid IN ({','.join(map(str, company_ids))})
+    GROUP BY 
+        cid
+    )
+    SELECT 
+        ds.*
+    FROM 
+        daystocks ds
+    JOIN 
+        min_max_dates mmd 
+        ON ds.cid = mmd.cid 
+        AND (ds.date = mmd.min_date OR ds.date = mmd.max_date)
+    ORDER BY 
+        date
+    """
+    df = pd.read_sql_query(query, engine)
+    return df
+
+
+def calculate_price_change_percentage(df):
+    df["price_change_percentage"] = df.groupby("cid")["close"].transform(
+        lambda x: ((x.iloc[-1] - x.iloc[0]) / x.iloc[0]) * 100
+    )
+    # Conserver uniquement la première occurrence de chaque 'cid'
+    df_unique = df.drop_duplicates(subset="cid", keep="first")
+    return df_unique
 
 
 @app.callback(
     Output("companies-dropdown", "value"),
-    [Input({"type": "company", "index": ALL}, "n_clicks")],
-    [Input("market-dropdown", "value")],
-    [State("companies-dropdown", "value")]
+    [State("companies-dropdown", "value")],
+    Input("tbl", "active_cell"),
 )
-def move_company_to_top(n_clicks, selected_markets, selected_companies):
+def move_company_to_top(selected_companies, active_cell):
+    print("active_cell", active_cell)
     global the_selected_companies
-    isMarket = selected_markets and not selected_companies #dans le cas ou toute les companies du market selectionné sont afficehr
-    if n_clicks is None:
-        raise dash.exceptions.PreventUpdate
-    
-    if any(n_clicks):
-        clicked_company_index = n_clicks.index(1)
-        if len(selected_companies) > clicked_company_index and selected_companies[clicked_company_index]:
-            companie = selected_companies[clicked_company_index]
+    if active_cell:
+        clicked_company_index = active_cell["row_id"] if active_cell else 0
+        if len(the_selected_companies) == 0:
+            the_selected_companies.append(clicked_company_index)
         else:
-            filtered_companies = companies[companies["mid"].isin(selected_markets)]
-            new_selected_companies = [
-                {"label": row["name"], "value": row["id"]}
-                for _, row in filtered_companies.iterrows()
-            ]
-            new_selected_companies = new_selected_companies[:20] # pour ne pas saturer le site
-            companie = new_selected_companies[clicked_company_index]
-        
-        if isMarket:
-            if companie["value"] in the_selected_companies: #Si la company est deja en premiere position Ou si la company na que 1 company principal, on la remplace
-                the_selected_companies.remove(companie["value"])
-                the_selected_companies.insert(0, companie["value"])
-            else:
-                 if (len(the_selected_companies) == 1):
-                     the_selected_companies = [companie["value"]]
-                 #else:
-                     #the_selected_companies.insert(0, companie["value"])
-        else:
-            # Remove the company from the list and insert it at the top
-            if companie in the_selected_companies: #Si la company est deja en premiere position Ou si la company na que 1 company principal, on la remplace
-                the_selected_companies.remove(companie)
-                the_selected_companies.insert(0, companie)
-            else:
-                 if (len(the_selected_companies) == 1):
-                     the_selected_companies = [companie]
-                 #else:
-                 #the_selected_companies.insert(0, companie)
-        
-        
+            the_selected_companies[0] = clicked_company_index
     return selected_companies
 
 
 @app.callback(
     Output({"type": "company", "index": ALL}, "style"),
     [Input({"type": "company", "index": ALL}, "n_clicks")],
-    [State({"type": "company", "index": ALL}, "id")]
+    [State({"type": "company", "index": ALL}, "id")],
 )
 def update_company_highlight(n_clicks, company_ids):
     if n_clicks is None:
         raise dash.exceptions.PreventUpdate
-    
+
     style_list = [{"color": "white", "cursor": "pointer"} for _ in range(len(n_clicks))]
     if any(n_clicks):
         clicked_company_index = n_clicks.index(1)
         style_list[clicked_company_index] = {"color": "red", "cursor": "pointer"}
-        
+
     return style_list
 
 
@@ -245,32 +304,33 @@ graph = dbc.Row(
 
 end = dbc.Col(
     [
-        html.Div(style={"padding": "2px"}), #faut automatiser le padding
+        # html.Div(style={"padding": "2px"}),  # faut automatiser le padding
         dcc.Dropdown(
             id="market-dropdown",
             options=market_options,
-            value=[14],
+            value=[],
             multi=True,
             placeholder="Select market(s)",
-            className="custom-dropdown",
-            style={"color": "black"}
+            className="custom-dropdown m-2",
+            style={"color": "black"},
         ),
-        html.Div(style={"padding": "2px"}), #faut automatiser le padding
+        # html.Div(style={"padding": "2px"}),  # faut automatiser le padding
         dcc.Dropdown(
             options=companies_options,
-            value=[4534],
+            value=[],
             id="companies-dropdown",
             multi=True,
             placeholder="Select company(ies)",
-            className="custom-dropdown",
-            style={"color": "black"}
+            className="custom-dropdown m-2",
+            style={"color": "black"},
         ),
-        html.Div(style={"padding": "10px"}), #faut automatiser le padding
-        html.Div(id="selected-companies-output")
+        # html.Div(style={"padding": "10px"}),  # faut automatiser le padding
+        dbc.Table(
+                id="selected-companies-output", style={"margin": "auto", "display": "block"}
+            )
     ],
-    className="mb-4",
     width=2,
-    style={"backgroundColor": "#2E2E33", "align-items": "center"},
+    style={"align-items": "center"},
 )
 
 tab_companies = dbc.Row(
@@ -291,13 +351,13 @@ preference_settings = html.Div(
                 html.Div(
                     dcc.Link(
                         dbc.Col(
-                            html.Img(src="assets/its.png", style={"width":'100%'}), 
-                            width=8, 
-                            class_name="my-4"
+                            html.Img(src="assets/its.png", style={"width": "100%"}),
+                            width=8,
+                            class_name="my-4",
                         ),
-                        href="#"
+                        href="#",
                     ),
-                    id="open"
+                    id="open",
                 ),
                 dbc.Label("Preference Settings", className="h5"),
                 dbc.Form(
@@ -341,7 +401,7 @@ preference_settings = html.Div(
                         html.Div(
                             [
                                 dbc.Label(
-                                    "Select Chart Type:", style={"color": "white"}
+                                    "Chart Type", style={"color": "white"}
                                 ),
                                 dbc.RadioItems(
                                     options=[
@@ -360,13 +420,15 @@ preference_settings = html.Div(
                                 ),
                             ],
                             className="mt-3",
-                        ),                 ]
+                        ),
+                    ]
                 ),
             ],
-            className="m-4"
+            className="m-4",
         )
     ]
 )
+
 
 @app.callback(
     Output("modal", "is_open"),
@@ -378,29 +440,31 @@ def toggle_modal(n, is_open):
         return not is_open
     return is_open
 
+
 app.layout = html.Div(
     [
+        html.Script("document.documentElement.setAttribute('data-bs-theme', 'dark');"),
         dbc.Modal(
             [
                 dbc.ModalBody(
-                    html.Img(src="/assets/saul_anim.gif", style={"width":'100%'})
+                    html.Img(src="/assets/saul_anim.gif", style={"width": "100%"})
                 ),
             ],
             id="modal",
         ),
-        dbc.Row(
+        html.Div(
             [
                 dbc.Col(preference_settings, width=2),
                 dbc.Col(
                     html.Div([headerGraph, graph, tab_companies]),
                     width=8,
-                    id="center-section"
+                    id="center-section",
                 ),
                 end,
             ],
-            className="mb-3",
+            className="mb-3 d-flex",
             id="layout",
-        )
+        ),
     ]
 )
 
@@ -498,8 +562,8 @@ def update_companies_chart(
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
     )
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#444', zerolinecolor="#444")
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#444', zerolinecolor="#444")
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="#444", zerolinecolor="#444")
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="#444", zerolinecolor="#444")
     fig.update_layout(xaxis_rangeslider_visible=False)
     fig.update_layout(
         xaxis=dict(
@@ -605,7 +669,6 @@ def update_companies_chart(
         Input("my-date-picker-range", "end_date"),
     ],
 )
-
 def update_table(selected_companies, start_date, end_date):
     if not the_selected_companies or not start_date or not end_date:
         return html.Table()
