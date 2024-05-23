@@ -20,11 +20,17 @@ DATABASE_URI = (
 )
 engine = sqlalchemy.create_engine(DATABASE_URI)
 
+external_stylesheets = [
+    dbc.themes.ZEPHYR,
+    dbc.themes.GRID,
+    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css",
+]
+
 app = dash.Dash(
     __name__,
     title="Bourse",
     suppress_callback_exceptions=True,
-    external_stylesheets=[dbc.themes.ZEPHYR, dbc.themes.GRID],
+    external_stylesheets=external_stylesheets,
 )  # , external_stylesheets=external_stylesheets)
 
 server = app.server
@@ -41,9 +47,7 @@ companies_options = [
 companies_id_to_labels = {row["id"]: row["name"] for _, row in companies.iterrows()}
 the_selected_companies = [
     # APPLE
-    # 4534,
-    # EURONEXPARIS
-    # 4588,
+    4570,
 ]
 
 
@@ -59,6 +63,21 @@ def toggle_bollinger_window(switch_value):
         return {"display": "block"}, False
     else:
         return {"display": "none"}, True
+
+
+@app.callback(
+    [
+        Output("ma-window-container", "style"),
+        Output("ma-window", "disabled"),
+    ],
+    [Input("switch-ma", "value")],
+)
+def toggle_ma_window(switch_value):
+    if switch_value:
+        return {"display": "block"}, False
+    else:
+        return {"display": "none"}, True
+
 
 
 headerGraph = dbc.Row(
@@ -85,6 +104,31 @@ headerGraph = dbc.Row(
 
 
 @app.callback(
+    Output("compared-companies-dropdown", "value"),
+    [Input("compared-companies-dropdown", "value")],
+)
+def add_new_companies_to_chart(compared_companies):
+    global the_selected_companies
+    if len(the_selected_companies) == 0:
+        return compared_companies
+    main_companie = the_selected_companies[0]
+    the_selected_companies = [
+        companie
+        for companie in the_selected_companies
+        if companie in compared_companies
+    ]
+    the_selected_companies.insert(0, main_companie)
+    for companie in compared_companies:
+        if (the_selected_companies[0] != companie) and (
+            companie not in the_selected_companies
+        ):
+            the_selected_companies.append(companie)
+
+    # delete elements that are not in the compared_companies list except the first element
+    return compared_companies
+
+
+@app.callback(
     Output("title-chart", "children"),
     [
         Input("companies-dropdown", "value"),
@@ -98,7 +142,6 @@ def update_title_chart(companies_dropdown_value, market_dropdown_value):
         return ""
 
     company_id = the_selected_companies[0]
-
     market = pd.read_sql_query(
         f"SELECT * FROM markets WHERE id = (SELECT mid FROM companies WHERE id = {company_id})",
         engine,
@@ -112,7 +155,36 @@ def update_title_chart(companies_dropdown_value, market_dropdown_value):
     name = company.name.iloc[0]
     market_name = market.name.iloc[0]
 
-    return f"{market_name} - {symbol} ({name})"
+    is_peapme = company.pea.iloc[0]
+
+    peapme_badge = None
+
+    if is_peapme:
+        peapme_badge = dbc.Badge(
+            "pea/pme",
+            text_color="white",
+            className="border me-1",
+        )
+
+    return html.Span(
+        [
+            html.B(f"{name}"),
+            f" | ({symbol})",
+            html.Br(),
+            html.Div(
+                [
+                    dbc.Badge(
+                        f"{market_name}",
+                        color="dark",
+                        text_color="white",
+                        className="border me-1",
+                    ),
+                    peapme_badge,
+                ],
+                id="badges",
+            ),
+        ]
+    )
 
 
 @app.callback(
@@ -122,35 +194,45 @@ def update_title_chart(companies_dropdown_value, market_dropdown_value):
         Input("market-dropdown", "value"),
         Input("my-date-picker-range", "start_date"),
         Input("my-date-picker-range", "end_date"),
+        Input("switch-peapme", "value"),
     ],
 )
 def update_selected_companies_output(
-    selected_companies, selected_market, start_date, end_date
+    selected_companies, selected_market, start_date, end_date, switch_peapme
 ):
     filtered_companies = companies[
         (companies["id"].isin(selected_companies))
         & (companies["mid"].isin(selected_market))
+        & (companies["pea"] == switch_peapme)
     ]
+
     if len(selected_market) == 0:
-        filtered_companies = companies[(companies["id"].isin(selected_companies))]
+        filtered_companies = companies[
+            (companies["id"].isin(selected_companies))
+            & (companies["pea"] == switch_peapme)
+        ]
     if len(selected_companies) == 0:
-        filtered_companies = companies[companies["mid"].isin(selected_market)]
+        filtered_companies = companies[
+            companies["mid"].isin(selected_market) & (companies["pea"] == switch_peapme)
+        ]
 
     if len(filtered_companies) == 0:
-        return html.Div("No companies selected", style={"text-align": "center", "color": "gray"}, className="mt-4")
+        return html.Div(
+            "No companies selected",
+            style={"text-align": "center", "color": "gray"},
+            className="mt-4",
+        )
     company_ids = filtered_companies["id"].tolist()
     columns = [
         {"name": "name", "id": "name"},
     ]
-    if len(selected_companies) > 0:
+    if True:
         stock_data = get_stock_data(engine, start_date, end_date, company_ids)
-        print("stock_data1: ", stock_data)
         stock_data = calculate_price_change_percentage(stock_data)
-        print("stock_data2: ", stock_data)
         columns = [
             {"name": "name", "id": "name"},
             {
-                "name": "perc %",
+                "name": "%",
                 "id": "price_change_percentage",
                 "type": "numeric",
                 "format": {
@@ -160,13 +242,12 @@ def update_selected_companies_output(
             },
         ]
 
-    # Fusionner les données des actions avec les informations des entreprises
+    # Fusionner les donnÃ©es des actions avec les informations des entreprises
     merged_data = (
         filtered_companies.merge(stock_data, left_on="id", right_on="cid", how="inner")
-        if len(selected_companies) > 0
+        if True
         else filtered_companies
     )
-    print("merged_data: ", merged_data)
 
     return dash_table.DataTable(
         id="tbl",
@@ -178,7 +259,6 @@ def update_selected_companies_output(
         page_size=20,
         style_cell={
             "color": "white",
-    
         },
         style_header={
             "backgroundColor": "#2E2E33",
@@ -203,8 +283,14 @@ def update_selected_companies_output(
                 "column_id": "price_change_percentage",
                 "color": "#F56565",
             },
-
-
+            {
+                "if": {"column_id": "name"},
+                "maxWidth": "200px",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+                "whiteSpace": "nowrap",
+                "cursor": "pointer",
+            },
         ],
     )
 
@@ -236,7 +322,44 @@ def get_stock_data(engine, start_date, end_date, company_ids):
     ORDER BY 
         date
     """
-    df = pd.read_sql_query(query, engine)
+    query2 = f"""
+    SELECT l.*
+    FROM companies c,
+    LATERAL (
+        SELECT ds.*
+        FROM daystocks ds
+        WHERE ds.cid = c.id  
+        AND ds.date BETWEEN '{start_date}' AND '{end_date}'
+        ORDER BY ds.date ASC  
+        LIMIT 1
+    ) l
+    WHERE c.id IN ({','.join(map(str, company_ids))})
+    """
+    query3 = f"""
+    SELECT l.*
+    FROM companies c,
+    LATERAL (
+        SELECT ds.*
+        FROM daystocks ds
+        WHERE ds.cid = c.id  
+        AND ds.date BETWEEN '{start_date}' AND '{end_date}'
+        ORDER BY ds.date DESC  
+        LIMIT 1
+    ) l
+    WHERE c.id IN ({','.join(map(str, company_ids))})
+    """
+    import concurrent.futures
+
+    def execute_query(query):
+        return pd.read_sql_query(query, engine)
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        query2_future = executor.submit(execute_query, query2)
+        query3_future = executor.submit(execute_query, query3)
+
+    df = query2_future.result()
+    df2 = query3_future.result()
+    df = pd.concat([df, df2])
     return df
 
 
@@ -244,7 +367,7 @@ def calculate_price_change_percentage(df):
     df["price_change_percentage"] = df.groupby("cid")["close"].transform(
         lambda x: ((x.iloc[-1] - x.iloc[0]) / x.iloc[0]) * 100
     )
-    # Conserver uniquement la première occurrence de chaque 'cid'
+    # Conserver uniquement la premiÃ¨re occurrence de chaque 'cid'
     df_unique = df.drop_duplicates(subset="cid", keep="first")
     return df_unique
 
@@ -255,7 +378,6 @@ def calculate_price_change_percentage(df):
     Input("tbl", "active_cell"),
 )
 def move_company_to_top(selected_companies, active_cell):
-    print("active_cell", active_cell)
     global the_selected_companies
     if active_cell:
         clicked_company_index = active_cell["row_id"] if active_cell else 0
@@ -324,10 +446,22 @@ end = dbc.Col(
             className="custom-dropdown m-2",
             style={"color": "black"},
         ),
+        html.Div(
+            dbc.Switch(
+                id="switch-peapme",
+                label="PEA/PME",
+                value=False,
+                className="m-0",
+                style={"color": "white"},
+            ),
+            className="mx-2",
+        ),
         # html.Div(style={"padding": "10px"}),  # faut automatiser le padding
         dbc.Table(
-                id="selected-companies-output", style={"margin": "auto", "display": "block"}
-            )
+            id="selected-companies-output",
+            className="custom-table-companies",
+            style={"margin": "auto", "display": "block"},
+        ),
     ],
     width=2,
     style={"align-items": "center"},
@@ -360,6 +494,7 @@ preference_settings = html.Div(
                     id="open",
                 ),
                 dbc.Label("Preference Settings", className="h5"),
+                dbc.Label("Indicators", className="h6"),
                 dbc.Form(
                     [
                         dbc.Switch(
@@ -380,10 +515,11 @@ preference_settings = html.Div(
                             value=False,
                             style={"color": "white"},
                         ),
+                        
                         html.Div(
                             [
                                 dbc.Label(
-                                    "Bollinger Bands Window Size:",
+                                    "BB Window Size",
                                     style={"color": "white"},
                                 ),
                                 dbc.Input(
@@ -396,27 +532,70 @@ preference_settings = html.Div(
                                 ),
                             ],
                             id="bollinger-window-container",
+                            className="mb-3",
                             style={"display": "none"},
+                        ),
+                        dbc.Switch(
+                            id="switch-ma",
+                            label="Moving Average",
+                            value=False,
+                            style={"color": "white"},
                         ),
                         html.Div(
                             [
                                 dbc.Label(
-                                    "Chart Type", style={"color": "white"}
+                                    "MA Window Size",
+                                    style={"color": "white"},
                                 ),
+                                dbc.Input(
+                                    type="number",
+                                    id="ma-window",
+                                    min=1,
+                                    step=1,
+                                    value=20,
+                                    disabled=True,
+                                ),
+                            ],
+                            id="ma-window-container",
+                            style={"display": "none"},
+                        ),
+
+                        html.Div(
+                            [
+                                dbc.Label("Chart Type", style={"color": "white"}),
                                 dbc.RadioItems(
                                     options=[
                                         {
                                             "label": "Candle Stick",
                                             "value": "Candle Stick",
                                         },
+                                        {
+                                            "label": "Line (Daily)",
+                                            "value": "Line (Daily)",
+                                        },
                                         {"label": "Line", "value": "Line"},
                                     ],
-                                    value="Line",
+                                    value="Line (Daily)",
                                     id="chart-type",
                                     inline=True,
                                     switch=True,
                                     style={"color": "white"},
-                                    className="mt-2",
+                                    # className="mt-2",
+                                ),
+                            ],
+                            className="mt-3",
+                        ),
+                        html.Div(
+                            [
+                                dbc.Label("Compare with"),
+                                dcc.Dropdown(
+                                    id="compared-companies-dropdown",
+                                    options=companies_options,
+                                    value=[],
+                                    multi=True,
+                                    placeholder="Select company(ies)",
+                                    className="custom-dropdown",
+                                    style={"color": "black"},
                                 ),
                             ],
                             className="mt-3",
@@ -485,14 +664,14 @@ def create_bands_trace(df):
         x=df["date"],
         y=df["Upper"],
         mode="lines",
-        name="Bande Supérieure",
+        name="Upper Band",
         line=dict(color="rgba(33, 150, 243, 0.5)"),
     )
     lower_trace = go.Scatter(
         x=df["date"],
         y=df["Lower"],
         mode="lines",
-        name="Bande Inférieure",
+        name="Lower Band",
         line=dict(color="rgba(33, 150, 243, 0.5)"),
     )
     zone_trace = go.Scatter(
@@ -501,14 +680,14 @@ def create_bands_trace(df):
         fill="toself",
         fillcolor="rgba(33, 150, 243, 0.1)",
         line=dict(color="rgba(255, 255, 255, 0)"),
-        name="Zone entre les bandes",
+        name="Middle Band",
     )
     # Adding the average trace
     average_trace = go.Scatter(
         x=df["date"],
         y=df["MA"],
         mode="lines",
-        name="Moyenne",
+        name="Mean",
         line=dict(color="rgba(255, 109, 1, 0.5)"),
     )
     return upper_trace, lower_trace, zone_trace, average_trace
@@ -533,6 +712,9 @@ def create_volume_trace(df, label):
         Input("switch-volume", "value"),
         Input("switch-bollinger-bands", "value"),
         Input("bollinger-window", "value"),
+        Input("compared-companies-dropdown", "value"),
+        Input("switch-ma", "value"),
+        Input("ma-window", "value"),
     ],
 )
 def update_companies_chart(
@@ -544,6 +726,9 @@ def update_companies_chart(
     volume: bool = False,
     bollinger_bands: bool = False,
     bollinger_window: Optional[int] = None,
+    compared_companies_dropdown: Optional[list[int]] = None,
+    ma=False,
+    ma_window: Optional[int]=None,
 ):
 
     if volume:
@@ -589,61 +774,64 @@ def update_companies_chart(
     if not start_date or not end_date:
         return fig
     end_date = str(datetime.fromisoformat(end_date) + timedelta(days=1))
-    if chart_type == "Candle Stick":
-        for i, value in enumerate(the_selected_companies):
-            label = companies_id_to_labels.get(value, "")
+    from_source = (
+        "daystocks"
+        if chart_type == "Candle Stick" or chart_type == "Line (Daily)"
+        else "stocks"
+    )
+    column_value = (
+        "close"
+        if chart_type == "Candle Stick" or chart_type == "Line (Daily)"
+        else "value"
+    )
+    for i, value in enumerate(the_selected_companies):
+        label = companies_id_to_labels.get(value, "")
 
-            df = pd.read_sql_query(
-                f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
-                engine,
-            )
+        df = pd.read_sql_query(
+            f"SELECT * FROM {from_source} WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
+            engine,
+        )
 
-            if i == 0:
-                fig.add_trace(create_candlestick_trace(df, label))
-            else:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["date"], y=df["close"], mode="lines", name=f"{label}"
-                    )
-                )
+        if len(the_selected_companies) > 1:
+            df[column_value] = (df[column_value] - df[column_value].iloc[0]) / df[
+                column_value
+            ].iloc[0]
+            print(df[column_value])
+            # percentage on y axis, tickformat: ',.0%',range: [0,1]
+            fig.update_layout(yaxis1_tickformat=",.1%")
 
-            if bollinger_bands and i == 0:
-                df["MA"] = df["close"].rolling(window=bollinger_window).mean()
-                df["STD"] = df["close"].rolling(window=bollinger_window).std()
-                df["Upper"] = df["MA"] + (df["STD"] * 2)
-                df["Lower"] = df["MA"] - (df["STD"] * 2)
-                upper_trace, lower_trace, zone_trace, average_trace = (
-                    create_bands_trace(df)
-                )
-                fig.add_trace(upper_trace)
-                fig.add_trace(lower_trace)
-                fig.add_trace(zone_trace)
-                fig.add_trace(average_trace)
+            # fig.update_yaxes(title_text=f"Percentage {label}", row=1, col=1)
 
-    else:
-        for i, value in enumerate(the_selected_companies):
-            label = companies_id_to_labels.get(value, "")
-            df = pd.read_sql_query(
-                f"SELECT * FROM daystocks WHERE cid = {value} and date >= '{start_date}' and date < '{end_date}' ORDER by date",
-                engine,
-            )
-
+        if i == 0 and chart_type == "Candle Stick":
+            fig.add_trace(create_candlestick_trace(df, label))
+        else:
             fig.add_trace(
-                go.Scatter(x=df["date"], y=df["close"], mode="lines", name=f"{label}")
+                go.Scatter(
+                    x=df["date"], y=df[column_value], mode="lines", name=f"{label}"
+                )
             )
 
-            if bollinger_bands and i == 0:
-                df["MA"] = df["close"].rolling(window=bollinger_window).mean()
-                df["STD"] = df["close"].rolling(window=bollinger_window).std()
-                df["Upper"] = df["MA"] + (df["STD"] * 2)
-                df["Lower"] = df["MA"] - (df["STD"] * 2)
-                upper_trace, lower_trace, zone_trace, average_trace = (
-                    create_bands_trace(df)
-                )
-                fig.add_trace(upper_trace)
-                fig.add_trace(lower_trace)
-                fig.add_trace(zone_trace)
-                fig.add_trace(average_trace)
+        if bollinger_bands and i == 0:
+            df["MA"] = df[column_value].rolling(window=bollinger_window).mean()
+            df["STD"] = df[column_value].rolling(window=bollinger_window).std()
+            df["Upper"] = df["MA"] + (df["STD"] * 2)
+            df["Lower"] = df["MA"] - (df["STD"] * 2)
+            upper_trace, lower_trace, zone_trace, average_trace = create_bands_trace(df)
+            fig.add_trace(upper_trace)
+            fig.add_trace(lower_trace)
+            fig.add_trace(zone_trace)
+            fig.add_trace(average_trace)
+            # Add SMA
+        if ma and i == 0:
+            df["SMA"] = df[column_value].rolling(window=ma_window).mean()
+            mean_trace = average_trace = go.Scatter(
+                x=df["date"],
+                y=df["SMA"],
+                mode="lines",
+                name="MA",
+                line=dict(color="rgba(255, 99, 72,1)"),
+            )
+            fig.add_trace(mean_trace)
 
     if log_y:
         fig.update_yaxes(type="log")
@@ -693,7 +881,7 @@ def update_table(selected_companies, start_date, end_date):
 
     df.rename(columns={"cid": "name"}, inplace=True)
 
-    # Prétraitement pour créer une nouvelle colonne 'color'
+    # PrÃ©traitement pour crÃ©er une nouvelle colonne 'color'
     df["color"] = df["close"].diff().apply(lambda x: "green" if x > 0 else "red")
 
     return dash_table.DataTable(

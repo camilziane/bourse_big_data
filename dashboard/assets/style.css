@@ -182,7 +182,10 @@ th {
 }
 
 #title-chart {
-  font-size: xx-large;
+  font-size: x-large;
+}
+#badges{
+  font-size: medium;
 }
 
 #center-section {
@@ -198,12 +201,59 @@ th {
   margin-bottom: -2% !important
 }
 
-.current-page {
+.first-page {
   background-color: var(--bs-gray-900);
-  color: white;
+  color: white !important;
   border-style: none;
 }
+.first-page:hover {
+  cursor: pointer;
+  color: gray !important;
+}
 
+.page-number {
+  color: white !important;
+}
+
+.current-page {
+  background-color: var(--bs-gray-900);
+  color: white !important;
+  border-style: none;
+}
+.current-page:hover {
+  cursor: pointer;
+  color: gray !important;
+}
+
+.last-page {
+  /* background-color: var(--bs-gray-900); */
+  color: white !important;
+  border-style: none;
+}
+.last-page:hover {
+  cursor: pointer;
+  color: gray !important;
+}
+
+.previous-page {
+  background-color: var(--bs-gray-900);
+  color: white !important;
+  border-style: none;
+}
+.previous-page:hover {
+  cursor: pointer;
+  color: gray !important;
+}
+
+.next-page {
+  background-color: var(--bs-gray-900);
+  color: white !important;
+  border-style: none;
+}
+.next-page:hover {
+  cursor: pointer;
+  color: gray !important;
+}
 
 ::placeholder {
   /* Most modern browsers support this now. */
@@ -251,6 +301,16 @@ td,
   background: var(--bs-gray-900) !important;
   color: white;
   border-style: none !important;
+}
+
+.DateInput_input:hover,
+.DateInput_input_1:hover,
+.DateRangePickerInput:hover,
+.DateRangePickerInput_1:hover,
+.DateRangePickerInput__withBorder:hover,
+.DateRangePickerInput__withBorder_2:hover {
+  color: gray;
+  cursor: pointer;
 }
 
 
@@ -313,4 +373,97 @@ border-style: none !important ;
     /* opacity: .7; */
     border: 0px solid grey;
     border-radius: 0px;
+}
+
+.custom-table-companies
+{
+  box-shadow: none !important;
+}
+
+/* -------------------------TEST DATE PICKER THAT'S WORK !!!--------------------------------- */
+
+.Calendar
+{
+  background-color: var(--bs-gray-900) !important;
+  color: white !important;
+}
+
+.DateRangePicker_picker {
+  background-color: #222222 !important;
+  border: none !important;
+  box-shadow: none !important; /* Si la bordure est appliquée via une ombre portée */
+}
+
+.CalendarDay__default{
+  background-color: #222222;
+  color: white;
+} 
+
+.CalendarDay__selected,
+.CalendarDay__selected:active,
+.CalendarDay__selected:hover {
+  background: #505050;
+  color: #fff
+}
+
+.CalendarDay__selected_span {
+  background-color:  #353535;
+  color: #fff
+}
+
+/* Changer la couleur de fond de l'en-tête des jours de la semaine */
+.DayPicker_weekHeader {
+  background-color: #222222;
+}
+
+.DayPicker_weekHeader_li {
+  color: white;
+}
+
+/* Changer la couleur de fond du sélecteur de mois et d'année */
+.CalendarMonth_caption {
+  background-color: #222222;
+  color : rgb(175, 175, 175);
+}
+
+/* Changer la couleur de fond des flèches de navigation */
+.DayPickerNavigation_button {
+  border: none !important;
+  background-color: #222222;
+}
+.DayPickerNavigation_button:active {
+  border: none !important;
+  background-color:  rgb(66, 66, 66);
+}
+
+.DayPicker {
+  background-color: #222222 !important;
+}
+
+.CalendarMonth 
+{
+  background-color: #222222;
+}
+.CalendarMonthGrid 
+{
+  background-color: #222222;
+}
+
+
+.CalendarDay:hover
+{
+  background: rgb(66, 66, 66);
+}
+
+.DateInput_fang
+{
+  background-color: #222222;
+}
+.DateInput_fangShape
+{
+  fill:  #222222;
+  border: none !important;
+}
+.DayPickerKeyboardShortcuts_show__bottomRight::before {
+  border-right: none !important;
 }
