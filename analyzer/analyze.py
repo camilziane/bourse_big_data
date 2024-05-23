@@ -43,7 +43,7 @@ def dfs_to_stocks2(df: pd.DataFrame) -> pd.DataFrame:
     df_stocks["volume"] = df_stocks["volume"].apply(lambda x: np.nan if x < 0 else x)
     df_stocks = df_stocks.groupby(["symbol", pd.Grouper(level=0, freq="1T")]).mean()
     df_stocks["volume"] = df_stocks["volume"].ffill()
-    df_stocks = df_stocks[(df_stocks["volume"] > 0) & (df_stocks["last"] > 0)]
+    df_stocks = df_stocks[(df_stocks["volume"] > 0) | (df_stocks["last"] > 0)]
     df_stocks = df_stocks.reset_index(level="symbol")
     return df_stocks
 
