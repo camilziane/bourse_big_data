@@ -1,7 +1,7 @@
 import pandas as pd
 import concurrent.futures
 import numpy as np
-from utils import  multi_read_df_from_paths, timer_decorator
+from utils import multi_read_df_from_paths, timer_decorator
 from timescaledb_model import TimescaleStockMarketModel
 from functools import partial
 
@@ -64,6 +64,7 @@ def df_to_companie(
 def files_to_companies(
     companies_files_paths: list[str],
     default_mid: int,
+    is_pea: bool,
     prefix_to_market_id: dict,
     num_thread: int,
 ):
@@ -72,6 +73,7 @@ def files_to_companies(
         df,
         prefix_to_market_id=prefix_to_market_id,
         default_mid=default_mid,
+        is_pea=is_pea,
     )
     return companies
 
@@ -106,6 +108,8 @@ def update_companies(
         db.prefix_to_market_id["1rP"],
         db.prefix_to_market_id["1rP"],
     ]
+
+    companies_peapme = [False, False, False, True]
     files_to_companies_partial = partial(
         files_to_companies,
         prefix_to_market_id=db.prefix_to_market_id,
@@ -122,7 +126,7 @@ def update_companies(
         companies_list = [
             r
             for r in executor.map(
-                files_to_companies_partial, companies_files_paths, companies_default_mid
+                files_to_companies_partial, companies_files_paths, companies_default_mid, companies_peapme
             )
         ]
     df_companies = pd.concat(companies_list)
