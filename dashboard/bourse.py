@@ -796,8 +796,6 @@ def update_companies_chart(
             df[column_value] = (df[column_value] - df[column_value].iloc[0]) / df[
                 column_value
             ].iloc[0]
-            print(df[column_value])
-            # percentage on y axis, tickformat: ',.0%',range: [0,1]
             fig.update_layout(yaxis1_tickformat=",.1%")
 
             # fig.update_yaxes(title_text=f"Percentage {label}", row=1, col=1)
