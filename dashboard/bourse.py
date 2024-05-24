@@ -131,11 +131,10 @@ def add_new_companies_to_chart(compared_companies):
 @app.callback(
     Output("title-chart", "children"),
     [
-        Input("companies-dropdown", "value"),
-        Input("market-dropdown", "value"),
+        Input("the_selected_companies", "children"),
     ],
 )
-def update_title_chart(companies_dropdown_value, market_dropdown_value):
+def update_title_chart(div_null):
     global the_selected_companies
 
     if not the_selected_companies:
@@ -258,7 +257,7 @@ def update_selected_companies_output(
         sort_action="native",
         page_size=20,
         style_cell={
-            "color": "white",
+            "color": "#cacaca",
         },
         style_header={
             "backgroundColor": "#2E2E33",
@@ -274,22 +273,18 @@ def update_selected_companies_output(
         ],
         style_data_conditional=[
             {
-                "if": {"filter_query": "{price_change_percentage} > 0"},
-                "column_id": "price_change_percentage",
+                "if": {
+                        "column_id": "price_change_percentage",
+                        "filter_query": "{price_change_percentage} > 0"
+                    },
                 "color": "#47BB78",
             },
             {
-                "if": {"filter_query": "{price_change_percentage} < 0"},
-                "column_id": "price_change_percentage",
+                "if": {
+                        "column_id": "price_change_percentage",
+                        "filter_query": "{price_change_percentage} < 0"
+                    },
                 "color": "#F56565",
-            },
-            {
-                "if": {"column_id": "name"},
-                "maxWidth": "200px",
-                "overflow": "hidden",
-                "textOverflow": "ellipsis",
-                "whiteSpace": "nowrap",
-                "cursor": "pointer",
             },
         ],
     )
@@ -367,17 +362,20 @@ def calculate_price_change_percentage(df):
     df["price_change_percentage"] = df.groupby("cid")["close"].transform(
         lambda x: ((x.iloc[-1] - x.iloc[0]) / x.iloc[0]) * 100
     )
+
+    # Arrondir le pourcentage à deux chiffres après la virgule
+    df["price_change_percentage"] = df["price_change_percentage"].round(2)
     # Conserver uniquement la premiÃ¨re occurrence de chaque 'cid'
     df_unique = df.drop_duplicates(subset="cid", keep="first")
     return df_unique
 
 
 @app.callback(
-    Output("companies-dropdown", "value"),
-    [State("companies-dropdown", "value")],
+    Output("the_selected_companies", "children"),
+    [State("the_selected_companies", "children")],
     Input("tbl", "active_cell"),
 )
-def move_company_to_top(selected_companies, active_cell):
+def move_company_to_top(div_null, active_cell):
     global the_selected_companies
     if active_cell:
         clicked_company_index = active_cell["row_id"] if active_cell else 0
@@ -385,7 +383,7 @@ def move_company_to_top(selected_companies, active_cell):
             the_selected_companies.append(clicked_company_index)
         else:
             the_selected_companies[0] = clicked_company_index
-    return selected_companies
+    return div_null
 
 
 @app.callback(
@@ -493,8 +491,12 @@ preference_settings = html.Div(
                     ),
                     id="open",
                 ),
-                dbc.Label("Preference Settings", className="h5"),
-                dbc.Label("Indicators", className="h6"),
+                html.Div([
+                    dbc.Label("Preference Settings", className="h5"),
+                ]),
+                html.Div([
+                    dbc.Label("Indicators", className="h6"),
+                ]),
                 dbc.Form(
                     [
                         dbc.Switch(
@@ -608,6 +610,23 @@ preference_settings = html.Div(
     ]
 )
 
+@app.callback(
+    [Output('chart-type', 'options'),
+     Output('chart-type', 'value')],
+    [Input('compared-companies-dropdown', 'value')],
+    [State('chart-type', 'value')]
+)
+def update_chart_type_options(selected_companies, current_value):
+    options = [
+        {"label": "Candle Stick", "value": "Candle Stick", "disabled": False},
+        {"label": "Line (Daily)", "value": "Line (Daily)", "disabled": False},
+        {"label": "Line", "value": "Line", "disabled": False},
+    ]
+    if selected_companies:
+        options[0]["disabled"] = True
+        if current_value == "Candle Stick":
+            current_value = "Line (Daily)"
+    return options, current_value
 
 @app.callback(
     Output("modal", "is_open"),
@@ -622,6 +641,7 @@ def toggle_modal(n, is_open):
 
 app.layout = html.Div(
     [
+        html.Div(id="the_selected_companies", style={"display": "none"}),
         html.Script("document.documentElement.setAttribute('data-bs-theme', 'dark');"),
         dbc.Modal(
             [
@@ -704,7 +724,7 @@ def create_volume_trace(df, label):
 @app.callback(
     Output("graph", "figure"),
     [
-        Input("companies-dropdown", "value"),
+        Input("the_selected_companies", "children"),
         Input("my-date-picker-range", "start_date"),
         Input("my-date-picker-range", "end_date"),
         Input("chart-type", "value"),
@@ -718,7 +738,7 @@ def create_volume_trace(df, label):
     ],
 )
 def update_companies_chart(
-    values: Optional[list[int]],
+    div_null: Optional[list[int]],
     start_date: Optional[str],
     end_date: Optional[str],
     chart_type: str = "Line",
@@ -850,12 +870,12 @@ def update_companies_chart(
 @app.callback(
     Output("table-container", "children"),
     [
-        Input("companies-dropdown", "value"),
+        Input("the_selected_companies", "children"),
         Input("my-date-picker-range", "start_date"),
         Input("my-date-picker-range", "end_date"),
     ],
 )
-def update_table(selected_companies, start_date, end_date):
+def update_table(div_null, start_date, end_date):
     if not the_selected_companies or not start_date or not end_date:
         return html.Table()
 

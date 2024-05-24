@@ -467,3 +467,33 @@ border-style: none !important ;
 .DayPickerKeyboardShortcuts_show__bottomRight::before {
   border-right: none !important;
 }
+
+/* -------------------------------- */
+
+/* Cible les cellules de la colonne 'name' */
+td[data-dash-column="name"] {
+  max-width: 100px !important; /* Limite la largeur */
+  overflow: hidden !important; /* Cache le contenu qui dépasse */
+  text-overflow: ellipsis !important; /* Ajoute des points de suspension pour le contenu qui dépasse */
+  white-space: nowrap !important; /* Empêche le retour à la ligne */
+  position: relative !important; /* Nécessaire pour le positionnement du tooltip */
+}
+
+/* Pour afficher le tooltip complet au survol */
+td[data-dash-column="name"]:hover {
+  cursor: pointer !important; /* Curseur de la souris */
+  content: attr(data-tooltip) !important; /* Utilise l'attribut data-tooltip pour le texte du tooltip */
+  visibility: visible !important; /* Rend le tooltip visible */
+  /* background-color: var(--bs-gray-800) !important; Couleur de fond */
+  /* z-index: 0 !important; Assure que le tooltip est au-dessus de la cellule */
+  left: 0 !important; /*Aligne le tooltip à gauche de la cellule */
+  color: #ffffff !important; /* Couleur du texte */
+  overflow: visible !important; /* Affiche le contenu qui dépasse */
+  position: relative !important; /* Positionne le tooltip par rapport à la cellule parente */
+  padding: 5px !important;
+  /* white-space: normal !important; Permet le retour à la ligne dans le tooltip */
+}
+
+td[data-dash-column="price_change_percentage"] {
+  max-width: 50px !important;
+}
