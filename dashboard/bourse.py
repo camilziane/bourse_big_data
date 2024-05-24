@@ -135,7 +135,7 @@ def add_new_companies_to_chart(compared_companies):
         Input("the_selected_companies", "children"),
     ],
 )
-def update_title_chart(div_null):
+def update_title_chart(_, div_null):
     global the_selected_companies
 
     if not the_selected_companies:
