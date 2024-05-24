@@ -1,0 +1,52 @@
+### Instructions pour Lancer le Projet
+
+#### Téléchargement et Décompression du Tar
+Téléchargez le fichier tar et décompressez-le à côté du dépôt. Par exemple :
+```sh
+ls /srv/libvirt-wrokdir
+/bourse_big_data /boursorama
+```
+
+#### Analyse et Dashboard
+
+**Analyse**
+```sh
+cd docker/analyzer
+make fast
+```
+
+**Dashboard**
+```sh
+cd docker/dashboard
+make fast
+```
+
+#### Lancer Docker Compose
+```sh
+cd docker
+docker compose up --build
+```
+
+### Détails sur l'Indexation
+
+- Le temps d'indexation est d'environ 9 minutes et 30 secondes.
+- Si le dashboard ne s'affiche pas après l'indexation, relancez la commande `docker compose up`.
+
+### Structuration des Données
+
+- **Données Indexées :** Toutes les données sont chargées si `volume` ou `value` est > 0.
+- Les données sont restructurées dans leurs marchés respectifs :
+
+  - Les fichiers d'Amsterdam sont rangés sous Eurex Exchange.
+  - Les fichiers `compA`, `compB`, et `peapme` sont rangés dans Euronext Paris, Euronext Amsterdam, ou Euronext Brussels en fonction du préfixe de l'actif.
+
+### Bande Droite (Sélection des Actifs)
+
+- Filtrez par marché et/ou par actifs puis selectioner dans le tableau l'actif souhaité.
+- Les actifs peuvent être triés par performance sur la période choisie.
+- Un actif contenant moins de 2 points de données sur cette période ne sera pas affiché.
+
+### Bande Gauche (Indicateurs Techniques)
+
+- Utilisez la bande à gauche pour ajouter des indicateurs techniques.
+- Pour comparer 2 actifs, choisissez un actif dans "Compare With".
