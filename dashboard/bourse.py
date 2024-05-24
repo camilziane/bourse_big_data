@@ -142,7 +142,6 @@ def update_title_chart(_, div_null):
         return ""
 
     company_id = the_selected_companies[0]
-    print("company_id", company_id)
     market = pd.read_sql_query(
         f"SELECT * FROM markets WHERE id = (SELECT mid FROM companies WHERE id = {company_id})",
         engine,
