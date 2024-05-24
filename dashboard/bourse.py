@@ -131,6 +131,7 @@ def add_new_companies_to_chart(compared_companies):
 @app.callback(
     Output("title-chart", "children"),
     [
+        Input("my-date-picker-range", "start_date"),
         Input("the_selected_companies", "children"),
     ],
 )
